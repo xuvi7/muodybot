@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { readdir } from 'node:fs/promises';
 import { inspect } from 'node:util';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import ffmpegPath from 'ffmpeg-static';
 import prism from 'prism-media';
 import {
@@ -417,13 +418,18 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
     return;
   }
 
+  const input = await createNoiseInput(noiseFile, signal);
+
+  if (!input) {
+    return;
+  }
+
   const ffmpeg = new prism.FFmpeg({
     args: [
       '-hide_banner',
       '-loglevel',
       'error',
-      '-i',
-      noiseFile.url,
+      ...input.args,
       '-analyzeduration',
       '0',
       '-f',
@@ -434,6 +440,34 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
       '2',
     ],
   });
+  let ffmpegErrorOutput = '';
+
+  ffmpeg.process?.stderr?.on('data', (chunk) => {
+    ffmpegErrorOutput += chunk.toString();
+  });
+
+  ffmpeg.process?.once('error', (error) => {
+    console.error(`Failed to start ffmpeg for join noise ${noiseFile.name}:`, error);
+  });
+
+  ffmpeg.process?.once('close', (code, processSignal) => {
+    if (code && code !== 0) {
+      console.error(
+        `ffmpeg exited with code ${code} while playing join noise ${noiseFile.name}.` +
+          (ffmpegErrorOutput ? ` stderr: ${ffmpegErrorOutput.trim()}` : ''),
+      );
+    } else if (processSignal && processSignal !== 'SIGKILL') {
+      console.error(`ffmpeg exited from signal ${processSignal} while playing join noise ${noiseFile.name}.`);
+    }
+  });
+
+  input.stream?.once('error', (error) => {
+    console.error(`Failed to stream join noise ${noiseFile.name}:`, error);
+    ffmpeg.destroy(error);
+  });
+
+  input.stream?.pipe(ffmpeg);
+
   const resource = createAudioResource(ffmpeg, {
     inputType: StreamType.Raw,
   });
@@ -475,6 +509,75 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
       onAbort();
     }
   });
+}
+
+async function createNoiseInput(noiseFile, signal) {
+  if (!isHttpUrl(noiseFile.url)) {
+    return {
+      args: ['-i', noiseFile.url],
+      stream: null,
+    };
+  }
+
+  try {
+    const response = await fetch(noiseFile.url, {
+      headers: getNoiseFetchHeaders(noiseFile.url),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Response did not include a readable body.');
+    }
+
+    console.log(
+      `Fetched join noise ${noiseFile.name}: ` +
+        `${response.headers.get('content-type') || 'unknown content type'}, ` +
+        `${response.headers.get('content-length') || 'unknown'} bytes.`,
+    );
+
+    return {
+      args: ['-i', '-'],
+      stream: Readable.fromWeb(response.body),
+    };
+  } catch (error) {
+    if (!signal?.aborted) {
+      console.error(`Failed to fetch join noise ${noiseFile.name}:`, error);
+    }
+
+    return null;
+  }
+}
+
+function getNoiseFetchHeaders(url) {
+  if (config.sanityToken && isSanityUrl(url)) {
+    return {
+      Authorization: `Bearer ${config.sanityToken}`,
+    };
+  }
+
+  return {};
+}
+
+function isHttpUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function isSanityUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.endsWith('.sanity.io');
+  } catch {
+    return false;
+  }
 }
 
 async function pickRandomNoise() {

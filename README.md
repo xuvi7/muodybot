@@ -60,6 +60,8 @@ If your dataset is private, also set:
 SANITY_TOKEN=your-read-token
 ```
 
+The bot uses `SANITY_TOKEN` for private audio files too. Without it, text and image queries may still work in some setups, but voice noises can fail when ffmpeg tries to read the protected file URL.
+
 The bot queries three document types:
 
 - `muodyTextReply`: text responses for random chat replies
