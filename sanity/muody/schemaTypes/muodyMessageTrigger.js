@@ -122,9 +122,17 @@ export default {
       hidden: ({ parent }) => !isCustomResponseType(parent?.responseType),
     },
     {
+      name: 'priority',
+      title: 'Priority',
+      description: 'Higher priority triggers win when multiple triggers match the same message. Same-priority matches are picked randomly using Random weight.',
+      type: 'number',
+      initialValue: 0,
+      validation: (Rule) => Rule.integer(),
+    },
+    {
       name: 'weight',
       title: 'Random weight',
-      description: 'Used when more than one trigger matches the same message.',
+      description: 'Used when more than one same-priority trigger matches the same message.',
       type: 'number',
       initialValue: 1,
       validation: (Rule) => Rule.min(0),

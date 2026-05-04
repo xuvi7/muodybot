@@ -22,7 +22,7 @@ export async function pickMessageTriggerResponse(content) {
     return null;
   }
 
-  return getTriggerResponse(weightedPick(matchingTriggers));
+  return getTriggerResponse(weightedPick(getHighestPriorityTriggers(matchingTriggers)));
 }
 
 async function getMessageTriggers() {
@@ -62,6 +62,16 @@ function getCustomResponses(trigger) {
     .map((response) => ({ ...response, type: 'muody' }));
 
   return [...textResponses, ...mediaResponses];
+}
+
+function getHighestPriorityTriggers(triggers) {
+  const highestPriority = Math.max(...triggers.map(getPriority));
+  return triggers.filter((trigger) => getPriority(trigger) === highestPriority);
+}
+
+function getPriority(trigger) {
+  const priority = Number(trigger?.priority);
+  return Number.isFinite(priority) ? priority : 0;
 }
 
 function messageMatchesTrigger(content, trigger) {

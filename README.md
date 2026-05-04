@@ -71,7 +71,7 @@ The bot queries four document types:
 - `muodyVoiceNoise`: audio files for voice joins
 - `muodyMessageTrigger`: custom message triggers and their response actions
 
-The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `weight` is used when more than one trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES`, local files in `assets/noises`, and a built-in Roblox trigger fallback.
+The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES`, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
 ### Editing Sanity content
 
@@ -91,7 +91,7 @@ In Studio, create or edit these documents:
 - **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
 - **Message Trigger**: add one or more `patterns`, choose a `matchType`, choose a `responseType`, keep `enabled` on, and publish.
 
-Use `weight` when one item should appear more often. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
+Use `priority` to decide which trigger wins when multiple triggers match the same message. Higher numbers win. If multiple matching triggers have the same highest priority, `weight` controls which one is picked. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
 
 Message trigger response types:
 
@@ -130,7 +130,7 @@ For voice noises:
 For message triggers:
 
 ```groq
-*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, weight}
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, priority, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.
