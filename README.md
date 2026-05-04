@@ -98,16 +98,20 @@ In Studio, create or edit these documents:
 - **Text Reply**: set `text`, keep `enabled` on, and publish.
 - **Muody**: upload an `image` or a video/GIF `file`, keep `enabled` on, and publish. The bot posts only the media, without the title or alt text.
 - **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
-- **Message Trigger**: add one or more `patterns`, choose a `matchType`, choose a `responseType`, keep `enabled` on, and publish.
+- **Message Trigger**: add one or more `patterns`, choose a `matchType`, add one or more `Responses`, keep `enabled` on, and publish.
 
 Use `priority` to decide which trigger wins when multiple triggers match the same message. Higher numbers win. If multiple matching triggers have the same highest priority, `weight` controls which one is picked. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
 
-Message trigger response types:
+Message trigger response types can be mixed on the same trigger by adding multiple `Responses` rows:
 
-- `Custom responses`: randomly sends one item from `responseTexts` and `responseMedia`.
-- `Random chat reply`: sends a random `muodyTextReply` or `muody` media item.
-- `Random GIF`: searches Klipy with `gifPrompt` and sends one random matching GIF.
+- `Text`: sends the row's text.
+- `Image, GIF, or video`: sends the uploaded media file.
+- `Random text reply`: sends a random `muodyTextReply`.
+- `Random Muody`: sends a random `muody` media item.
+- `Random GIF`: searches Klipy with the row's `gifPrompt` and sends one random matching GIF.
 - `Roblox game suggestion`: fetches a trending Roblox game and sends it.
+
+Each response row has its own `Random weight`, so one trigger can choose between text, uploaded media, a random text reply, a random Muody, a Klipy GIF search, or a Roblox game suggestion.
 
 To move the existing Roblox behavior into Sanity, create a **Message Trigger** with:
 
@@ -115,7 +119,7 @@ To move the existing Roblox behavior into Sanity, create a **Message Trigger** w
 Title: Roblox game suggestion
 Trigger patterns: roblox, what should we play, game suggestion, game suggestions, games to play
 Match type: Whole word or phrase
-Response type: Roblox game suggestion
+Responses: add one Roblox game suggestion row
 Enabled: true
 ```
 
@@ -140,7 +144,7 @@ For voice noises:
 For message triggers:
 
 ```groq
-*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, gifPrompt, priority, weight}
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseActions[]{type, text, title, altText, weight, gifPrompt, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, gifPrompt, priority, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.

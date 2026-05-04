@@ -26,7 +26,7 @@ export async function getSanityVoiceNoises() {
 export async function getSanityMessageTriggers() {
   return fetchSanityList(
     'message triggers',
-    '*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType), "originalFilename": file.asset->originalFilename}, gifPrompt, priority, weight}',
+    '*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseActions[]{type, text, title, altText, weight, gifPrompt, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType), "originalFilename": file.asset->originalFilename}, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType), "originalFilename": file.asset->originalFilename}, gifPrompt, priority, weight}',
   );
 }
 

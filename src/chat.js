@@ -61,6 +61,21 @@ export async function pickRandomChatResponse() {
   return response.type === 'text' ? response.text : response;
 }
 
+export async function pickRandomTextReply() {
+  const textReplies = await getSanityTextReplies();
+
+  if (textReplies.length === 0) {
+    return pick(config.randomReplies);
+  }
+
+  return weightedPick(textReplies).text;
+}
+
+export async function pickRandomMuody() {
+  const muodies = await getSanityMuodies();
+  return muodies.length > 0 ? { ...weightedPick(muodies), type: 'muody' } : null;
+}
+
 function isVideoResponse(response) {
   return response.mimeType?.startsWith('video/');
 }

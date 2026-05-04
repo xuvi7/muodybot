@@ -1,6 +1,6 @@
 import { formatRobloxSuggestion, getRobloxSuggestions } from './roblox.js';
 import { config } from './config.js';
-import { pickRandomChatResponse } from './chat.js';
+import { pickRandomChatResponse, pickRandomMuody, pickRandomTextReply } from './chat.js';
 import { getRandomGif } from './gifs.js';
 import { getSanityMessageTriggers } from './sanity.js';
 import { pick, weightedPick } from './utils.js';
@@ -32,39 +32,99 @@ async function getMessageTriggers() {
 }
 
 async function getTriggerResponse(trigger) {
-  if (trigger.responseType === 'robloxSuggestion') {
+  const actions = getResponseActions(trigger);
+  const action = actions.length > 0 ? weightedPick(actions) : null;
+  return action ? getActionResponse(action) : null;
+}
+
+async function getActionResponse(action) {
+  if (action.type === 'robloxSuggestion') {
     const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
     return formatRobloxSuggestion(pick(suggestions));
   }
 
-  if (trigger.responseType === 'randomReply') {
+  if (action.type === 'randomReply') {
     return pickRandomChatResponse();
   }
 
-  if (trigger.responseType === 'randomGif') {
-    return getRandomGif(trigger.gifPrompt);
+  if (action.type === 'randomTextReply') {
+    return pickRandomTextReply();
   }
 
-  if (isCustomResponseTrigger(trigger)) {
-    const responses = getCustomResponses(trigger);
-    const response = responses.length > 0 ? weightedPick(responses) : null;
-    return response?.type === 'text' ? response.text : response;
+  if (action.type === 'randomMuody') {
+    return pickRandomMuody();
+  }
+
+  if (action.type === 'randomGif') {
+    return getRandomGif(action.gifPrompt);
+  }
+
+  if (action.type === 'text') {
+    return action.text;
+  }
+
+  if (action.type === 'media' && action.url) {
+    return { ...action, type: 'muody' };
   }
 
   return null;
 }
 
-function isCustomResponseTrigger(trigger) {
-  return ['responses', 'text', 'media'].includes(trigger.responseType);
+function getResponseActions(trigger) {
+  const actions = (Array.isArray(trigger.responseActions) ? trigger.responseActions : [])
+    .map(normalizeResponseAction)
+    .filter(Boolean);
+
+  return actions.length > 0 ? actions : getLegacyResponseActions(trigger);
 }
 
-function getCustomResponses(trigger) {
+function normalizeResponseAction(action) {
+  if (action?.type === 'text' && typeof action.text === 'string' && action.text.trim()) {
+    return { ...action, text: action.text.trim() };
+  }
+
+  if (action?.type === 'media' && action.url) {
+    return action;
+  }
+
+  if (action?.type === 'randomGif' && typeof action.gifPrompt === 'string' && action.gifPrompt.trim()) {
+    return { ...action, gifPrompt: action.gifPrompt.trim() };
+  }
+
+  if (['randomReply', 'randomTextReply', 'randomMuody', 'robloxSuggestion'].includes(action?.type)) {
+    return action;
+  }
+
+  return null;
+}
+
+function getLegacyResponseActions(trigger) {
+  if (trigger.responseType === 'robloxSuggestion') {
+    return [{ type: 'robloxSuggestion', weight: trigger.weight }];
+  }
+
+  if (trigger.responseType === 'randomReply') {
+    return [{ type: 'randomReply', weight: trigger.weight }];
+  }
+
+  if (trigger.responseType === 'randomGif') {
+    return normalizeResponseAction({
+      type: 'randomGif',
+      gifPrompt: trigger.gifPrompt,
+      weight: trigger.weight,
+    }) ? [{ type: 'randomGif', gifPrompt: trigger.gifPrompt, weight: trigger.weight }] : [];
+  }
+
+  if (!['responses', 'text', 'media'].includes(trigger.responseType)) {
+    return [];
+  }
+
   const textResponses = (Array.isArray(trigger.responseTexts) ? trigger.responseTexts : [])
     .filter((response) => typeof response === 'string' && response.trim())
     .map((text) => ({ text, type: 'text', weight: 1 }));
   const mediaResponses = (Array.isArray(trigger.responseMedia) ? trigger.responseMedia : [])
     .filter((response) => response?.url)
-    .map((response) => ({ ...response, type: 'muody' }));
+    .map((response) => ({ ...response, type: 'media' }));
 
   return [...textResponses, ...mediaResponses];
 }
