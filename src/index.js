@@ -43,6 +43,12 @@ const config = {
   guildId: process.env.GUILD_ID || null,
   randomReplyChance: readNumber(process.env.RANDOM_REPLY_CHANCE, 0.08),
   randomReplies: readCsv(process.env.RANDOM_REPLIES, ['yay', 'ok', 'or', 'nope']),
+  sanityProjectId: process.env.SANITY_PROJECT_ID || null,
+  sanityDataset: process.env.SANITY_DATASET || 'production',
+  sanityApiVersion: process.env.SANITY_API_VERSION || '2025-01-01',
+  sanityToken: process.env.SANITY_TOKEN || null,
+  sanityUseCdn: readBoolean(process.env.SANITY_USE_CDN, true),
+  sanityCacheSeconds: readNumber(process.env.SANITY_CACHE_SECONDS, 300),
   timeZone: process.env.TIME_ZONE || 'America/New_York',
   voiceJoinStartHour: readNumber(process.env.VOICE_JOIN_START_HOUR, 23),
   voiceJoinEndHour: readNumber(process.env.VOICE_JOIN_END_HOUR, 3),
@@ -56,6 +62,7 @@ const config = {
 
 const voiceJoinLocks = new Set();
 const voiceVisitsByNight = new Map();
+const sanityCache = new Map();
 
 const client = new Client({
   intents: [
@@ -99,7 +106,7 @@ client.on('messageCreate', async (message) => {
   }
 
   if (Math.random() < config.randomReplyChance) {
-    await sendChatReply(message, pick(config.randomReplies));
+    await sendChatReply(message, await pickRandomChatResponse());
   }
 });
 
@@ -138,15 +145,57 @@ async function registerCommands() {
   console.log(`Registered ${commands.length} slash command(s).`);
 }
 
-async function sendChatReply(message, content) {
+async function sendChatReply(message, response) {
+  const payload = formatDiscordReply(response);
+
   try {
-    await message.reply(content);
+    await message.reply(payload);
   } catch (error) {
     console.error('Failed to reply to message, trying normal channel send:', error);
-    await message.channel.send(content).catch((sendError) => {
+    await message.channel.send(payload).catch((sendError) => {
       console.error('Failed to send message to channel:', sendError);
     });
   }
+}
+
+function formatDiscordReply(response) {
+  if (typeof response === 'string') {
+    return response;
+  }
+
+  if (response?.type === 'muody' && response.url) {
+    return {
+      content: response.title || undefined,
+      embeds: [
+        {
+          image: {
+            url: response.url,
+          },
+          ...(response.altText ? { description: response.altText } : {}),
+        },
+      ],
+    };
+  }
+
+  return pick(config.randomReplies);
+}
+
+async function pickRandomChatResponse() {
+  const [textReplies, muodies] = await Promise.all([
+    getSanityTextReplies(),
+    getSanityMuodies(),
+  ]);
+  const responses = [
+    ...textReplies.map((reply) => ({ ...reply, type: 'text' })),
+    ...muodies.map((muody) => ({ ...muody, type: 'muody' })),
+  ];
+
+  if (responses.length === 0) {
+    return pick(config.randomReplies);
+  }
+
+  const response = weightedPick(responses);
+  return response.type === 'text' ? response.text : response;
 }
 
 function scheduleNextVoiceVisit() {
@@ -255,7 +304,7 @@ function logVoiceConnection(connection) {
 }
 
 async function playRandomJoinNoise(connection) {
-  const noiseFile = await pickRandomNoiseFile();
+  const noiseFile = await pickRandomNoise();
 
   if (!noiseFile) {
     console.log(`No join noises found in ${config.voiceNoiseDir}.`);
@@ -273,7 +322,7 @@ async function playRandomJoinNoise(connection) {
       '-loglevel',
       'error',
       '-i',
-      noiseFile,
+      noiseFile.url,
       '-analyzeduration',
       '0',
       '-f',
@@ -295,7 +344,7 @@ async function playRandomJoinNoise(connection) {
   }
 
   player.play(resource);
-  console.log(`Playing join noise: ${path.basename(noiseFile)}`);
+  console.log(`Playing join noise: ${noiseFile.name}`);
 
   player.on('stateChange', (oldState, newState) => {
     console.log(`Join noise player changed from ${oldState.status} to ${newState.status}.`);
@@ -306,7 +355,7 @@ async function playRandomJoinNoise(connection) {
   });
 
   player.on('error', (error) => {
-    console.error(`Failed to play join noise ${noiseFile}:`, error);
+    console.error(`Failed to play join noise ${noiseFile.name}:`, error);
   });
 
   await new Promise((resolve) => {
@@ -319,6 +368,36 @@ async function playRandomJoinNoise(connection) {
       resolve();
     });
   });
+}
+
+async function pickRandomNoise() {
+  const cmsNoise = await pickRandomSanityVoiceNoise();
+
+  if (cmsNoise) {
+    return cmsNoise;
+  }
+
+  const localNoiseFile = await pickRandomNoiseFile();
+  return localNoiseFile
+    ? {
+        url: localNoiseFile,
+        name: path.basename(localNoiseFile),
+      }
+    : null;
+}
+
+async function pickRandomSanityVoiceNoise() {
+  const noises = await getSanityVoiceNoises();
+
+  if (noises.length === 0) {
+    return null;
+  }
+
+  const noise = weightedPick(noises);
+  return {
+    url: noise.url,
+    name: noise.title || noise.originalFilename || noise.url,
+  };
 }
 
 async function pickRandomNoiseFile() {
@@ -339,6 +418,70 @@ async function pickRandomNoiseFile() {
 
     return null;
   }
+}
+
+async function getSanityTextReplies() {
+  return fetchSanityList(
+    'text replies',
+    '*[_type == "muodyTextReply" && enabled != false && defined(text)]{text, weight}',
+  );
+}
+
+async function getSanityMuodies() {
+  return fetchSanityList(
+    'muodies',
+    '*[_type == "muody" && enabled != false && defined(image.asset->url)]{title, altText, weight, "url": image.asset->url}',
+  );
+}
+
+async function getSanityVoiceNoises() {
+  return fetchSanityList(
+    'voice noises',
+    '*[_type == "muodyVoiceNoise" && enabled != false && defined(file.asset->url)]{title, weight, "url": file.asset->url, "originalFilename": file.asset->originalFilename}',
+  );
+}
+
+async function fetchSanityList(label, query) {
+  if (!config.sanityProjectId || !config.sanityDataset) {
+    return [];
+  }
+
+  const cached = sanityCache.get(query);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  try {
+    const url = new URL(getSanityQueryEndpoint());
+    url.searchParams.set('query', query);
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        ...(config.sanityToken ? { Authorization: `Bearer ${config.sanityToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const value = Array.isArray(payload.result) ? payload.result : [];
+    sanityCache.set(query, {
+      value,
+      expiresAt: Date.now() + Math.max(0, config.sanityCacheSeconds) * 1000,
+    });
+    return value;
+  } catch (error) {
+    console.error(`Failed to fetch Sanity ${label}:`, error);
+    return cached?.value || [];
+  }
+}
+
+function getSanityQueryEndpoint() {
+  const host = config.sanityUseCdn && !config.sanityToken ? 'apicdn.sanity.io' : 'api.sanity.io';
+  return `https://${config.sanityProjectId}.${host}/v${config.sanityApiVersion}/data/query/${config.sanityDataset}`;
 }
 
 async function getRobloxSuggestions(limit) {
@@ -618,6 +761,31 @@ function readBoolean(value, fallback) {
 
 function pick(items) {
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function weightedPick(items) {
+  const totalWeight = items.reduce((sum, item) => sum + getWeight(item), 0);
+
+  if (totalWeight <= 0) {
+    return pick(items);
+  }
+
+  let target = Math.random() * totalWeight;
+
+  for (const item of items) {
+    target -= getWeight(item);
+
+    if (target <= 0) {
+      return item;
+    }
+  }
+
+  return items[items.length - 1];
+}
+
+function getWeight(item) {
+  const weight = Number(item?.weight);
+  return Number.isFinite(weight) && weight > 0 ? weight : 1;
 }
 
 function addDays(date, days) {
