@@ -68,10 +68,6 @@ const client = new Client({
 
 const commands = [
   new SlashCommandBuilder()
-    .setName('roblox')
-    .setDescription('Suggest trending Roblox games to play')
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName('join')
     .setDescription('Test Muody joining your current voice channel')
     .toJSON(),
@@ -96,26 +92,19 @@ client.on('messageCreate', async (message) => {
 
   console.log(`Saw message from ${message.author.tag} in #${message.channel.name}.`);
 
-  if (Math.random() < config.randomReplyChance) {
-    await sendChatReply(message, pick(config.randomReplies));
+  if (shouldSuggestRoblox(message.content)) {
+    const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
+    await sendChatReply(message, formatRobloxSuggestion(pick(suggestions)));
     return;
   }
 
-  if (shouldSuggestRoblox(message.content)) {
-    const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
-    await sendChatReply(message, formatRobloxSuggestions(suggestions));
+  if (Math.random() < config.randomReplyChance) {
+    await sendChatReply(message, pick(config.randomReplies));
   }
 });
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) {
-    return;
-  }
-
-  if (interaction.commandName === 'roblox') {
-    await interaction.deferReply();
-    const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
-    await interaction.editReply(formatRobloxSuggestions(suggestions));
     return;
   }
 
@@ -430,13 +419,16 @@ function normalizeRobloxGames(payload) {
   return [...byUniverseId.values()];
 }
 
-function formatRobloxSuggestions(suggestions) {
-  const lines = suggestions.map((game, index) => {
-    const playing = game.playing ? ` - ${formatNumber(game.playing)} playing` : '';
-    return `${index + 1}. ${game.name}${playing}\n${game.url}`;
-  });
+function formatRobloxSuggestion(game) {
+  const prompts = [
+    'anyone want to play [this game]({url})?',
+    'we should play [this game]({url})',
+    'does anyone want to try [this game]({url})?',
+    '[this game]({url}) looks fun',
+    'i found [this game]({url}) if anyone wants to play',
+  ];
 
-  return `Trending Roblox games:\n${lines.join('\n')}`;
+  return pick(prompts).replace('{url}', game.url);
 }
 
 async function fetchJson(url) {
@@ -630,10 +622,6 @@ function pick(items) {
 
 function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
-}
-
-function formatNumber(value) {
-  return new Intl.NumberFormat('en-US').format(value);
 }
 
 function pad2(value) {

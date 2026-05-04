@@ -5,7 +5,7 @@ A Discord bot that:
 - randomly joins a voice channel between 11 PM and 3 AM when people are in voice
 - plays a random noise from `assets/noises` when it joins voice
 - randomly responds to chat messages with `yay`, `ok`, `or`, or `nope`
-- suggests trending Roblox games with `/roblox`
+- suggests a random trending Roblox game when someone says `roblox`
 
 ## Setup
 
@@ -33,7 +33,7 @@ Run it:
 npm start
 ```
 
-If `GUILD_ID` is set in `.env`, `/roblox` registers to that server when the bot starts.
+If `GUILD_ID` is set in `.env`, slash commands register to that server when the bot starts.
 
 ## Join noises
 
