@@ -279,19 +279,21 @@ async function joinVoiceChannelAndPlayNoise(channel) {
     await entersState(connection, VoiceConnectionStatus.Ready, 45_000);
     console.log(`Joined ${channel.name} in ${channel.guild.name}.`);
     await playJoinNoiseSession(connection);
-    connection.destroy();
-    console.log(`Left ${channel.name} in ${channel.guild.name} after the voice visit ended.`);
+    if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+      connection.destroy();
+      console.log(`Left ${channel.name} in ${channel.guild.name} after the voice visit ended.`);
+    }
   } catch (error) {
     console.error(
       `Failed to make voice connection ready. Current status: ${connection.state.status}. ` +
         'If the bot appears in VC but this keeps happening, check firewall/VPN/UDP access to Discord voice.',
       error,
     );
-    voiceJoinLocks.delete(channel.guild.id);
     return false;
+  } finally {
+    voiceJoinLocks.delete(channel.guild.id);
   }
 
-  voiceJoinLocks.delete(channel.guild.id);
   return true;
 }
 
@@ -317,9 +319,11 @@ async function playJoinNoiseSession(connection) {
   const stayMs = getRandomMilliseconds(config.voiceStayMinMinutes, config.voiceStayMaxMinutes, 60_000);
   const leaveAt = Date.now() + stayMs;
   let clipsPlayed = 0;
+  const abortController = new AbortController();
+  const { signal } = abortController;
   const player = createAudioPlayer({
     behaviors: {
-      noSubscriber: NoSubscriberBehavior.Play,
+      noSubscriber: NoSubscriberBehavior.Stop,
     },
   });
   const subscription = connection.subscribe(player);
@@ -341,39 +345,75 @@ async function playJoinNoiseSession(connection) {
     console.error('Failed to play join noise:', error);
   });
 
+  const stopSession = (reason) => {
+    if (!signal.aborted) {
+      abortController.abort(reason);
+    }
+
+    player.stop();
+  };
+  const onConnectionStateChange = (oldState, newState) => {
+    if (
+      oldState.status === VoiceConnectionStatus.Ready &&
+      [VoiceConnectionStatus.Disconnected, VoiceConnectionStatus.Destroyed].includes(newState.status)
+    ) {
+      console.log('Stopping join noise player because the bot was disconnected from voice.');
+      stopSession(newState.status);
+    }
+  };
+
+  connection.on('stateChange', onConnectionStateChange);
   console.log(`Voice visit will last ${formatDuration(stayMs)}.`);
 
-  while (Date.now() < leaveAt) {
-    const noiseFile = await pickRandomNoise();
+  try {
+    while (!signal.aborted && Date.now() < leaveAt) {
+      const noiseFile = await pickRandomNoise();
 
-    if (!noiseFile) {
-      console.log(`No join noises found in ${config.voiceNoiseDir}.`);
-      break;
+      if (!noiseFile) {
+        console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+        break;
+      }
+
+      await playNoiseFile(player, noiseFile, leaveAt - Date.now(), signal);
+
+      if (signal.aborted) {
+        break;
+      }
+
+      clipsPlayed += 1;
+
+      const remainingMs = leaveAt - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+
+      const pauseMs = Math.min(
+        getRandomMilliseconds(config.voicePauseMinSeconds, config.voicePauseMaxSeconds, 1000),
+        remainingMs,
+      );
+      console.log(`Waiting ${formatDuration(pauseMs)} before next join noise.`);
+      await sleep(pauseMs, signal);
     }
-
-    await playNoiseFile(player, noiseFile, leaveAt - Date.now());
-    clipsPlayed += 1;
-
-    const remainingMs = leaveAt - Date.now();
-    if (remainingMs <= 0) {
-      break;
-    }
-
-    const pauseMs = Math.min(
-      getRandomMilliseconds(config.voicePauseMinSeconds, config.voicePauseMaxSeconds, 1000),
-      remainingMs,
-    );
-    console.log(`Waiting ${formatDuration(pauseMs)} before next join noise.`);
-    await sleep(pauseMs);
+  } finally {
+    connection.off('stateChange', onConnectionStateChange);
+    subscription.unsubscribe();
+    player.stop();
   }
 
-  player.stop();
-  console.log(`Voice visit finished after ${clipsPlayed} clip(s).`);
+  if (signal.aborted) {
+    console.log(`Voice visit stopped early after ${clipsPlayed} clip(s).`);
+  } else {
+    console.log(`Voice visit finished after ${clipsPlayed} clip(s).`);
+  }
 }
 
-async function playNoiseFile(player, noiseFile, maxPlayMs) {
+async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
   if (!noiseFile) {
     console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+    return;
+  }
+
+  if (signal?.aborted) {
     return;
   }
 
@@ -402,14 +442,25 @@ async function playNoiseFile(player, noiseFile, maxPlayMs) {
   console.log(`Playing join noise: ${noiseFile.name}`);
 
   await new Promise((resolve) => {
+    let finished = false;
+    const onAbort = () => {
+      player.stop();
+      finish();
+    };
     const onIdle = () => {
       player.stop();
       finish();
     };
     const finish = () => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
       clearTimeout(playTimeout);
       player.off(AudioPlayerStatus.Idle, onIdle);
       player.off('error', finish);
+      signal?.removeEventListener('abort', onAbort);
       resolve();
     };
     const playTimeout = setTimeout(() => {
@@ -418,6 +469,11 @@ async function playNoiseFile(player, noiseFile, maxPlayMs) {
 
     player.once(AudioPlayerStatus.Idle, onIdle);
     player.once('error', finish);
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    if (signal?.aborted) {
+      onAbort();
+    }
   });
 }
 
@@ -689,9 +745,23 @@ function getRandomMilliseconds(minValue, maxValue, multiplier) {
   return Math.round((min + Math.random() * (max - min)) * multiplier);
 }
 
-function sleep(delayMs) {
+function sleep(delayMs, signal) {
   return new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+
+    let timeout;
+    const finish = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    const onAbort = () => finish();
+
+    timeout = setTimeout(finish, delayMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
