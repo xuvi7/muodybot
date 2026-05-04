@@ -95,7 +95,7 @@ Use `weight` when one item should appear more often. For example, an item with `
 
 Message trigger response types:
 
-- `Text response`: sends the trigger's `responseText`.
+- `Text response`: randomly sends one item from `responseTexts`.
 - `Random chat reply`: sends a random `muodyTextReply` or `muody` image.
 - `Roblox game suggestion`: fetches a trending Roblox game and sends it.
 
@@ -130,7 +130,7 @@ For voice noises:
 For message triggers:
 
 ```groq
-*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseText, weight}
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.

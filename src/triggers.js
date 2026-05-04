@@ -40,11 +40,17 @@ async function getTriggerResponse(trigger) {
     return pickRandomChatResponse();
   }
 
-  if (trigger.responseType === 'text' && trigger.responseText) {
-    return trigger.responseText;
+  if (trigger.responseType === 'text') {
+    const responseTexts = getTextResponses(trigger);
+    return responseTexts.length > 0 ? pick(responseTexts) : null;
   }
 
   return null;
+}
+
+function getTextResponses(trigger) {
+  return (Array.isArray(trigger.responseTexts) ? trigger.responseTexts : [])
+    .filter((response) => typeof response === 'string' && response.trim());
 }
 
 function messageMatchesTrigger(content, trigger) {

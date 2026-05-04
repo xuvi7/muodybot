@@ -26,7 +26,7 @@ export async function getSanityVoiceNoises() {
 export async function getSanityMessageTriggers() {
   return fetchSanityList(
     'message triggers',
-    '*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseText, weight}',
+    '*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, weight}',
   );
 }
 

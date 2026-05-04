@@ -48,14 +48,15 @@ export default {
       validation: (Rule) => Rule.required(),
     },
     {
-      name: 'responseText',
-      title: 'Response text',
-      description: 'Used when Response type is Text response.',
-      type: 'string',
+      name: 'responseTexts',
+      title: 'Response texts',
+      description: 'One or more text responses. The bot picks one randomly.',
+      type: 'array',
+      of: [{ type: 'string' }],
       hidden: ({ parent }) => parent?.responseType !== 'text',
       validation: (Rule) => Rule.custom((value, context) => (
-        context.parent?.responseType === 'text' && !value
-          ? 'Response text is required for text triggers.'
+        context.parent?.responseType === 'text' && !value?.length
+          ? 'Add at least one response text for text triggers.'
           : true
       )),
     },
