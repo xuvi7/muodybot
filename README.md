@@ -3,7 +3,7 @@
 A Discord bot that:
 
 - randomly joins a voice channel between 11 PM and 3 AM when people are in voice
-- plays a random voice noise from Sanity, falling back to `assets/noises`
+- plays random voice noises from Sanity, falling back to `assets/noises`, until its randomized stay time is up
 - randomly responds to chat messages with Sanity text replies or image `muodies`, falling back to `yay`, `ok`, `or`, or `nope`
 - sends an immediate random reply with `/reply`
 - suggests a random trending Roblox game when someone says `roblox`
@@ -39,7 +39,7 @@ If `GUILD_ID` is set in `.env`, slash commands register to that server when the 
 ## Commands
 
 - `/reply`: sends a random Sanity text reply or muody image immediately, without waiting for `RANDOM_REPLY_CHANCE`.
-- `/join`: tests joining your current voice channel and playing a voice noise.
+- `/join`: tests joining your current voice channel and playing voice noises.
 
 ## Sanity CMS assets
 
@@ -126,3 +126,14 @@ VOICE_TEST_DELAY_SECONDS=10
 ```
 
 Set it back to `0` when you want normal 11 PM to 3 AM scheduling.
+
+Voice visits choose a random stay length and random pauses between clips. Set these in `.env` to tune the behavior:
+
+```text
+VOICE_STAY_MIN_MINUTES=4
+VOICE_STAY_MAX_MINUTES=8
+VOICE_PAUSE_MIN_SECONDS=8
+VOICE_PAUSE_MAX_SECONDS=45
+```
+
+`VOICE_STAY_MINUTES` is still supported as a fixed-length fallback when the min/max values are not set.

@@ -52,7 +52,10 @@ const config = {
   timeZone: process.env.TIME_ZONE || 'America/New_York',
   voiceJoinStartHour: readNumber(process.env.VOICE_JOIN_START_HOUR, 23),
   voiceJoinEndHour: readNumber(process.env.VOICE_JOIN_END_HOUR, 3),
-  voiceStayMinutes: readNumber(process.env.VOICE_STAY_MINUTES, 5),
+  voiceStayMinMinutes: readNumber(process.env.VOICE_STAY_MIN_MINUTES, readNumber(process.env.VOICE_STAY_MINUTES, 5)),
+  voiceStayMaxMinutes: readNumber(process.env.VOICE_STAY_MAX_MINUTES, readNumber(process.env.VOICE_STAY_MINUTES, 5)),
+  voicePauseMinSeconds: readNumber(process.env.VOICE_PAUSE_MIN_SECONDS, 8),
+  voicePauseMaxSeconds: readNumber(process.env.VOICE_PAUSE_MAX_SECONDS, 45),
   voiceNoiseDir: process.env.VOICE_NOISE_DIR || 'assets/noises',
   voiceRandomJoinEnabled: readBoolean(process.env.VOICE_RANDOM_JOIN_ENABLED, true),
   voiceMaxVisitsPerNight: readNumber(process.env.VOICE_MAX_VISITS_PER_NIGHT, 1),
@@ -129,7 +132,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     const joined = await joinVoiceChannelAndPlayNoise(channel);
-    await interaction.editReply(joined ? 'Joined and tried to play a noise.' : 'Joined visually, but Discord voice never became ready. Check the terminal logs.');
+    await interaction.editReply(joined ? 'Joined and played voice noises for the configured visit time.' : 'Joined visually, but Discord voice never became ready. Check the terminal logs.');
     return;
   }
 
@@ -275,9 +278,9 @@ async function joinVoiceChannelAndPlayNoise(channel) {
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 45_000);
     console.log(`Joined ${channel.name} in ${channel.guild.name}.`);
-    await playRandomJoinNoise(connection);
+    await playJoinNoiseSession(connection);
     connection.destroy();
-    console.log(`Left ${channel.name} in ${channel.guild.name} after audio finished.`);
+    console.log(`Left ${channel.name} in ${channel.guild.name} after the voice visit ended.`);
   } catch (error) {
     console.error(
       `Failed to make voice connection ready. Current status: ${connection.state.status}. ` +
@@ -310,19 +313,70 @@ function logVoiceConnection(connection) {
   });
 }
 
-async function playRandomJoinNoise(connection) {
-  const noiseFile = await pickRandomNoise();
-
-  if (!noiseFile) {
-    console.log(`No join noises found in ${config.voiceNoiseDir}.`);
-    return;
-  }
-
+async function playJoinNoiseSession(connection) {
+  const stayMs = getRandomMilliseconds(config.voiceStayMinMinutes, config.voiceStayMaxMinutes, 60_000);
+  const leaveAt = Date.now() + stayMs;
+  let clipsPlayed = 0;
   const player = createAudioPlayer({
     behaviors: {
       noSubscriber: NoSubscriberBehavior.Play,
     },
   });
+  const subscription = connection.subscribe(player);
+
+  if (!subscription) {
+    console.error('Failed to subscribe audio player to the voice connection.');
+    return;
+  }
+
+  player.on('stateChange', (oldState, newState) => {
+    console.log(`Join noise player changed from ${oldState.status} to ${newState.status}.`);
+  });
+
+  player.on('debug', (message) => {
+    console.log(`Join noise debug: ${message}`);
+  });
+
+  player.on('error', (error) => {
+    console.error('Failed to play join noise:', error);
+  });
+
+  console.log(`Voice visit will last ${formatDuration(stayMs)}.`);
+
+  while (Date.now() < leaveAt) {
+    const noiseFile = await pickRandomNoise();
+
+    if (!noiseFile) {
+      console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+      break;
+    }
+
+    await playNoiseFile(player, noiseFile, leaveAt - Date.now());
+    clipsPlayed += 1;
+
+    const remainingMs = leaveAt - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+
+    const pauseMs = Math.min(
+      getRandomMilliseconds(config.voicePauseMinSeconds, config.voicePauseMaxSeconds, 1000),
+      remainingMs,
+    );
+    console.log(`Waiting ${formatDuration(pauseMs)} before next join noise.`);
+    await sleep(pauseMs);
+  }
+
+  player.stop();
+  console.log(`Voice visit finished after ${clipsPlayed} clip(s).`);
+}
+
+async function playNoiseFile(player, noiseFile, maxPlayMs) {
+  if (!noiseFile) {
+    console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+    return;
+  }
+
   const ffmpeg = new prism.FFmpeg({
     args: [
       '-hide_banner',
@@ -344,36 +398,26 @@ async function playRandomJoinNoise(connection) {
     inputType: StreamType.Raw,
   });
 
-  const subscription = connection.subscribe(player);
-  if (!subscription) {
-    console.error('Failed to subscribe audio player to the voice connection.');
-    return;
-  }
-
   player.play(resource);
   console.log(`Playing join noise: ${noiseFile.name}`);
 
-  player.on('stateChange', (oldState, newState) => {
-    console.log(`Join noise player changed from ${oldState.status} to ${newState.status}.`);
-  });
-
-  player.on('debug', (message) => {
-    console.log(`Join noise debug: ${message}`);
-  });
-
-  player.on('error', (error) => {
-    console.error(`Failed to play join noise ${noiseFile.name}:`, error);
-  });
-
   await new Promise((resolve) => {
-    player.once(AudioPlayerStatus.Idle, () => {
+    const onIdle = () => {
       player.stop();
+      finish();
+    };
+    const finish = () => {
+      clearTimeout(playTimeout);
+      player.off(AudioPlayerStatus.Idle, onIdle);
+      player.off('error', finish);
       resolve();
-    });
+    };
+    const playTimeout = setTimeout(() => {
+      player.stop();
+    }, Math.max(0, maxPlayMs));
 
-    player.once('error', () => {
-      resolve();
-    });
+    player.once(AudioPlayerStatus.Idle, onIdle);
+    player.once('error', finish);
   });
 }
 
@@ -632,6 +676,35 @@ function getDelayUntilNextVoiceVisit() {
   const earliest = now > start ? now : start;
   const delayWindow = Math.max(60_000, end.getTime() - earliest.getTime());
   return earliest.getTime() - now.getTime() + Math.floor(Math.random() * delayWindow);
+}
+
+function getRandomMilliseconds(minValue, maxValue, multiplier) {
+  const min = Math.max(0, Math.min(minValue, maxValue));
+  const max = Math.max(0, Math.max(minValue, maxValue));
+
+  if (max <= min) {
+    return Math.round(min * multiplier);
+  }
+
+  return Math.round((min + Math.random() * (max - min)) * multiplier);
+}
+
+function sleep(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+function formatDuration(durationMs) {
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
 }
 
 function canVisitVoiceTonight() {
