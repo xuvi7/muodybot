@@ -10,12 +10,19 @@ export default {
     },
     {
       name: 'image',
-      title: 'Image',
+      title: 'Image or GIF',
       type: 'image',
       options: {
         hotspot: true,
       },
-      validation: (Rule) => Rule.required(),
+    },
+    {
+      name: 'file',
+      title: 'Video or GIF file',
+      type: 'file',
+      options: {
+        accept: 'image/gif,video/*',
+      },
     },
     {
       name: 'altText',
@@ -36,6 +43,11 @@ export default {
       initialValue: true,
     },
   ],
+  validation: (Rule) => Rule.custom((document) => (
+    document.image || document.file
+      ? true
+      : 'Upload an image, GIF, or video.'
+  )),
   preview: {
     select: {
       title: 'title',

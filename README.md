@@ -39,7 +39,7 @@ If `GUILD_ID` is set in `.env`, slash commands register to that server when the 
 
 ## Commands
 
-- `/reply`: sends a random Sanity text reply or muody image immediately, without waiting for `RANDOM_REPLY_CHANCE`.
+- `/reply`: sends a random Sanity text reply or muody media item immediately, without waiting for `RANDOM_REPLY_CHANCE`.
 - `/join`: tests joining your current voice channel and playing voice noises.
 - `/playnoise clip:<name>`: joins your current voice channel, plays the selected Sanity or local voice noise once, then leaves. The `clip` option autocompletes from available voice noise titles and filenames.
 
@@ -62,12 +62,12 @@ If your dataset is private, also set:
 SANITY_TOKEN=your-read-token
 ```
 
-The bot uses `SANITY_TOKEN` for private audio files too. Without it, text and image queries may still work in some setups, but voice noises can fail when ffmpeg tries to read the protected file URL.
+The bot uses `SANITY_TOKEN` for private files too. Without it, text and image queries may still work in some setups, but private audio, video, and GIF files can fail when Discord or ffmpeg tries to read the protected file URL.
 
 The bot queries four document types:
 
 - `muodyTextReply`: text responses for random chat replies
-- `muody`: image responses, called muodies
+- `muody`: image, GIF, or video responses, called muodies
 - `muodyVoiceNoise`: audio files for voice joins
 - `muodyMessageTrigger`: custom message triggers and their response actions
 
@@ -87,7 +87,7 @@ Open the local Studio URL it prints, usually `http://localhost:3333`.
 In Studio, create or edit these documents:
 
 - **Text Reply**: set `text`, keep `enabled` on, and publish.
-- **Muody**: upload an `image`, keep `enabled` on, and publish. The bot posts only the image, without the title or alt text.
+- **Muody**: upload an `image` or a video/GIF `file`, keep `enabled` on, and publish. The bot posts only the media, without the title or alt text.
 - **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
 - **Message Trigger**: add one or more `patterns`, choose a `matchType`, choose a `responseType`, keep `enabled` on, and publish.
 
@@ -95,8 +95,8 @@ Use `weight` when one item should appear more often. For example, an item with `
 
 Message trigger response types:
 
-- `Text response`: randomly sends one item from `responseTexts`.
-- `Random chat reply`: sends a random `muodyTextReply` or `muody` image.
+- `Custom responses`: randomly sends one item from `responseTexts` and `responseMedia`.
+- `Random chat reply`: sends a random `muodyTextReply` or `muody` media item.
 - `Roblox game suggestion`: fetches a trending Roblox game and sends it.
 
 To move the existing Roblox behavior into Sanity, create a **Message Trigger** with:
@@ -115,10 +115,10 @@ To verify content from Studio, open the **Vision** tab and run:
 *[_type == "muodyTextReply" && enabled != false && defined(text)]{text, weight}
 ```
 
-For image replies:
+For muody media replies:
 
 ```groq
-*[_type == "muody" && enabled != false && defined(image.asset->url)]{title, "url": image.asset->url, weight}
+*[_type == "muody" && enabled != false && (defined(image.asset->url) || defined(file.asset->url))]{title, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType), weight}
 ```
 
 For voice noises:
@@ -130,7 +130,7 @@ For voice noises:
 For message triggers:
 
 ```groq
-*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, weight}
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.

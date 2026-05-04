@@ -40,17 +40,28 @@ async function getTriggerResponse(trigger) {
     return pickRandomChatResponse();
   }
 
-  if (trigger.responseType === 'text') {
-    const responseTexts = getTextResponses(trigger);
-    return responseTexts.length > 0 ? pick(responseTexts) : null;
+  if (isCustomResponseTrigger(trigger)) {
+    const responses = getCustomResponses(trigger);
+    const response = responses.length > 0 ? weightedPick(responses) : null;
+    return response?.type === 'text' ? response.text : response;
   }
 
   return null;
 }
 
-function getTextResponses(trigger) {
-  return (Array.isArray(trigger.responseTexts) ? trigger.responseTexts : [])
-    .filter((response) => typeof response === 'string' && response.trim());
+function isCustomResponseTrigger(trigger) {
+  return ['responses', 'text', 'media'].includes(trigger.responseType);
+}
+
+function getCustomResponses(trigger) {
+  const textResponses = (Array.isArray(trigger.responseTexts) ? trigger.responseTexts : [])
+    .filter((response) => typeof response === 'string' && response.trim())
+    .map((text) => ({ text, type: 'text', weight: 1 }));
+  const mediaResponses = (Array.isArray(trigger.responseMedia) ? trigger.responseMedia : [])
+    .filter((response) => response?.url)
+    .map((response) => ({ ...response, type: 'muody' }));
+
+  return [...textResponses, ...mediaResponses];
 }
 
 function messageMatchesTrigger(content, trigger) {

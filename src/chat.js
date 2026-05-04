@@ -21,6 +21,10 @@ export function formatDiscordReply(response) {
   }
 
   if (response?.type === 'muody' && response.url) {
+    if (isVideoResponse(response)) {
+      return response.url;
+    }
+
     return {
       embeds: [
         {
@@ -51,4 +55,8 @@ export async function pickRandomChatResponse() {
 
   const response = weightedPick(responses);
   return response.type === 'text' ? response.text : response;
+}
+
+function isVideoResponse(response) {
+  return response.mimeType?.startsWith('video/');
 }

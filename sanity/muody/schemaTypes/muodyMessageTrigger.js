@@ -36,10 +36,10 @@ export default {
       name: 'responseType',
       title: 'Response type',
       type: 'string',
-      initialValue: 'text',
+      initialValue: 'responses',
       options: {
         list: [
-          { title: 'Text response', value: 'text' },
+          { title: 'Custom responses', value: 'responses' },
           { title: 'Random chat reply', value: 'randomReply' },
           { title: 'Roblox game suggestion', value: 'robloxSuggestion' },
         ],
@@ -53,12 +53,73 @@ export default {
       description: 'One or more text responses. The bot picks one randomly.',
       type: 'array',
       of: [{ type: 'string' }],
-      hidden: ({ parent }) => parent?.responseType !== 'text',
-      validation: (Rule) => Rule.custom((value, context) => (
-        context.parent?.responseType === 'text' && !value?.length
-          ? 'Add at least one response text for text triggers.'
-          : true
-      )),
+      hidden: ({ parent }) => !isCustomResponseType(parent?.responseType),
+    },
+    {
+      name: 'responseMedia',
+      title: 'Response media',
+      description: 'One or more images, GIFs, or videos. The bot picks one randomly.',
+      type: 'array',
+      of: [
+        {
+          type: 'object',
+          fields: [
+            {
+              name: 'title',
+              title: 'Title',
+              type: 'string',
+            },
+            {
+              name: 'image',
+              title: 'Image or GIF',
+              type: 'image',
+              options: {
+                hotspot: true,
+              },
+            },
+            {
+              name: 'file',
+              title: 'Video or GIF file',
+              type: 'file',
+              options: {
+                accept: 'image/gif,video/*',
+              },
+            },
+            {
+              name: 'altText',
+              title: 'Alt text',
+              type: 'string',
+            },
+            {
+              name: 'weight',
+              title: 'Random weight',
+              type: 'number',
+              initialValue: 1,
+              validation: (Rule) => Rule.min(0),
+            },
+          ],
+          validation: (Rule) => Rule.custom((value) => (
+            value?.image || value?.file
+              ? true
+              : 'Upload an image, GIF, or video.'
+          )),
+          preview: {
+            select: {
+              title: 'title',
+              subtitle: 'altText',
+              media: 'image',
+            },
+            prepare({ title, subtitle, media }) {
+              return {
+                title: title || 'Untitled media response',
+                subtitle,
+                media,
+              };
+            },
+          },
+        },
+      ],
+      hidden: ({ parent }) => !isCustomResponseType(parent?.responseType),
     },
     {
       name: 'weight',
@@ -88,4 +149,17 @@ export default {
       };
     },
   },
+  validation: (Rule) => Rule.custom((document) => {
+    if (!isCustomResponseType(document?.responseType)) {
+      return true;
+    }
+
+    return document?.responseTexts?.length || document?.responseMedia?.length
+      ? true
+      : 'Add at least one text or media response.';
+  }),
 };
+
+function isCustomResponseType(responseType) {
+  return ['responses', 'text', 'media'].includes(responseType);
+}
