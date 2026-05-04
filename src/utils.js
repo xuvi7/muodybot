@@ -38,11 +38,13 @@ export function weightedPick(items) {
   let target = Math.random() * totalWeight;
 
   for (const item of items) {
-    target -= getWeight(item);
+    const weight = getWeight(item);
 
-    if (target <= 0) {
+    if (target < weight) {
       return item;
     }
+
+    target -= weight;
   }
 
   return items[items.length - 1];
@@ -113,5 +115,5 @@ export function pad2(value) {
 
 function getWeight(item) {
   const weight = Number(item?.weight);
-  return Number.isFinite(weight) && weight > 0 ? weight : 1;
+  return Number.isFinite(weight) && weight >= 0 ? weight : 1;
 }
