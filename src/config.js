@@ -21,7 +21,7 @@ export const config = {
   klipyApiKey: process.env.KLIPY_API_KEY || null,
   klipyClientKey: process.env.KLIPY_CLIENT_KEY || 'muodybot',
   gifResultLimit: readNumber(process.env.GIF_RESULT_LIMIT, 25),
-  gifContentFilter: process.env.GIF_CONTENT_FILTER || 'medium',
+  gifContentFilter: process.env.GIF_CONTENT_FILTER || process.env.GIF_RATING || 'off',
   timeZone: process.env.TIME_ZONE || 'America/New_York',
   voiceJoinStartHour: readNumber(process.env.VOICE_JOIN_START_HOUR, 23),
   voiceJoinEndHour: readNumber(process.env.VOICE_JOIN_END_HOUR, 3),

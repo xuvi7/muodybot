@@ -79,7 +79,7 @@ Random GIF trigger responses use Klipy. Set this in `.env`:
 KLIPY_API_KEY=your-klipy-api-key
 KLIPY_CLIENT_KEY=muodybot
 GIF_RESULT_LIMIT=25
-GIF_CONTENT_FILTER=medium
+GIF_CONTENT_FILTER=off
 ```
 
 ### Editing Sanity content
