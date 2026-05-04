@@ -18,7 +18,6 @@ export async function getRandomGif(prompt) {
     url.searchParams.set('limit', String(clampResultLimit(config.gifResultLimit)));
     url.searchParams.set('media_filter', 'gif,tinygif');
     url.searchParams.set('contentfilter', config.gifContentFilter);
-    url.searchParams.set('random', 'true');
 
     const response = await fetch(url, {
       headers: {
