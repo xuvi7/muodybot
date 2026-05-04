@@ -113,16 +113,6 @@ Message trigger response types can be mixed on the same trigger by adding multip
 
 Each response row has its own `Random weight`, so one trigger can choose between text, uploaded media, a random text reply, a random Muody, a Klipy GIF search, or a Roblox game suggestion.
 
-To move the existing Roblox behavior into Sanity, create a **Message Trigger** with:
-
-```text
-Title: Roblox game suggestion
-Trigger patterns: roblox, what should we play, game suggestion, game suggestions, games to play
-Match type: Whole word or phrase
-Responses: add one Roblox game suggestion row
-Enabled: true
-```
-
 To verify content from Studio, open the **Vision** tab and run:
 
 ```groq
@@ -151,13 +141,7 @@ After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` f
 
 ## Join noises
 
-Sanity `muodyVoiceNoise` documents are preferred. For local fallback, put sound files in `assets/noises`, for example:
-
-```text
-assets/noises/bruh.mp3
-assets/noises/yippee.wav
-assets/noises/metal-pipe.ogg
-```
+Sanity `muodyVoiceNoise` documents are preferred. For local fallback, put sound files in `assets/noises`.
 
 Supported extensions are `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.webm`.
 
@@ -172,8 +156,8 @@ Set it back to `0` when you want normal 11 PM to 3 AM scheduling.
 Voice visits choose a random stay length and random pauses between clips. Set these in `.env` to tune the behavior:
 
 ```text
-VOICE_STAY_MIN_MINUTES=4
-VOICE_STAY_MAX_MINUTES=8
+VOICE_STAY_MIN_MINUTES=1
+VOICE_STAY_MAX_MINUTES=5
 VOICE_PAUSE_MIN_SECONDS=8
 VOICE_PAUSE_MAX_SECONDS=45
 ```
