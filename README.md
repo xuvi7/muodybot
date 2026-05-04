@@ -6,6 +6,7 @@ A Discord bot that:
 - plays random voice noises from Sanity, falling back to `assets/noises`, until its randomized stay time is up
 - randomly responds to chat messages with Sanity text replies or image `muodies`, falling back to `yay`, `ok`, `or`, or `nope`
 - sends an immediate random reply with `/reply`
+- joins your current voice channel and plays a selected voice noise with `/playnoise`
 - suggests a random trending Roblox game when someone says `roblox`
 
 ## Setup
@@ -40,6 +41,7 @@ If `GUILD_ID` is set in `.env`, slash commands register to that server when the 
 
 - `/reply`: sends a random Sanity text reply or muody image immediately, without waiting for `RANDOM_REPLY_CHANCE`.
 - `/join`: tests joining your current voice channel and playing voice noises.
+- `/playnoise clip:<name>`: joins your current voice channel, plays the selected Sanity or local voice noise once, then leaves. The `clip` option autocompletes from available voice noise titles and filenames.
 
 ## Sanity CMS assets
 

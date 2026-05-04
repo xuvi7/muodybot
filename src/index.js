@@ -83,6 +83,17 @@ const commands = [
     .setDescription('Test Muody joining your current voice channel')
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('playnoise')
+    .setDescription('Join your current voice channel and play a specific Muody noise')
+    .addStringOption((option) =>
+      option
+        .setName('clip')
+        .setDescription('The voice noise title or filename to play')
+        .setRequired(true)
+        .setAutocomplete(true),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('reply')
     .setDescription('Send a random Muody reply without waiting for random chance')
     .toJSON(),
@@ -119,6 +130,14 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    if (interaction.commandName === 'playnoise') {
+      await respondWithNoiseAutocomplete(interaction);
+    }
+
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) {
     return;
   }
@@ -134,6 +153,30 @@ client.on('interactionCreate', async (interaction) => {
 
     const joined = await joinVoiceChannelAndPlayNoise(channel);
     await interaction.editReply(joined ? 'Joined and played voice noises for the configured visit time.' : 'Joined visually, but Discord voice never became ready. Check the terminal logs.');
+    return;
+  }
+
+  if (interaction.commandName === 'playnoise') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const channel = interaction.member?.voice?.channel;
+    if (!channel || channel.type !== ChannelType.GuildVoice) {
+      await interaction.editReply('Join a voice channel first, then run /playnoise again.');
+      return;
+    }
+
+    const clip = interaction.options.getString('clip', true);
+    const noiseFile = await findNoiseByName(clip);
+
+    if (!noiseFile) {
+      await interaction.editReply(`I could not find a voice noise named "${clip}".`);
+      return;
+    }
+
+    const joined = await joinVoiceChannelAndPlaySpecificNoise(channel, noiseFile);
+    await interaction.editReply(joined
+      ? `Joined and played "${noiseFile.name}".`
+      : 'Joined visually, but Discord voice never became ready. Check the terminal logs.');
     return;
   }
 
@@ -255,6 +298,18 @@ async function visitRandomOccupiedVoiceChannel() {
 }
 
 async function joinVoiceChannelAndPlayNoise(channel) {
+  return joinVoiceChannelForSession(channel, playJoinNoiseSession, 'voice visit');
+}
+
+async function joinVoiceChannelAndPlaySpecificNoise(channel, noiseFile) {
+  return joinVoiceChannelForSession(
+    channel,
+    (connection) => playSingleNoiseSession(connection, noiseFile),
+    `voice noise ${noiseFile.name}`,
+  );
+}
+
+async function joinVoiceChannelForSession(channel, playSession, label) {
   if (voiceJoinLocks.has(channel.guild.id)) {
     console.log(`Skipped voice join in ${channel.guild.name} because another join is already in progress.`);
     return false;
@@ -279,10 +334,10 @@ async function joinVoiceChannelAndPlayNoise(channel) {
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 45_000);
     console.log(`Joined ${channel.name} in ${channel.guild.name}.`);
-    await playJoinNoiseSession(connection);
+    await playSession(connection);
     if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
       connection.destroy();
-      console.log(`Left ${channel.name} in ${channel.guild.name} after the voice visit ended.`);
+      console.log(`Left ${channel.name} in ${channel.guild.name} after ${label} ended.`);
     }
   } catch (error) {
     console.error(
@@ -408,6 +463,39 @@ async function playJoinNoiseSession(connection) {
   }
 }
 
+async function playSingleNoiseSession(connection, noiseFile) {
+  const player = createAudioPlayer({
+    behaviors: {
+      noSubscriber: NoSubscriberBehavior.Stop,
+    },
+  });
+  const subscription = connection.subscribe(player);
+
+  if (!subscription) {
+    console.error('Failed to subscribe audio player to the voice connection.');
+    return;
+  }
+
+  player.on('stateChange', (oldState, newState) => {
+    console.log(`Single noise player changed from ${oldState.status} to ${newState.status}.`);
+  });
+
+  player.on('debug', (message) => {
+    console.log(`Single noise debug: ${message}`);
+  });
+
+  player.on('error', (error) => {
+    console.error('Failed to play selected noise:', error);
+  });
+
+  try {
+    await playNoiseFile(player, noiseFile, null);
+  } finally {
+    subscription.unsubscribe();
+    player.stop();
+  }
+}
+
 async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
   if (!noiseFile) {
     console.log(`No join noises found in ${config.voiceNoiseDir}.`);
@@ -471,6 +559,7 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
 
     await new Promise((resolve) => {
       let finished = false;
+      let playTimeout;
       const onAbort = () => {
         player.stop();
         finish();
@@ -485,15 +574,20 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
         }
 
         finished = true;
-        clearTimeout(playTimeout);
+        if (playTimeout) {
+          clearTimeout(playTimeout);
+        }
         player.off(AudioPlayerStatus.Idle, onIdle);
         player.off('error', finish);
         signal?.removeEventListener('abort', onAbort);
         resolve();
       };
-      const playTimeout = setTimeout(() => {
-        player.stop();
-      }, Math.max(0, maxPlayMs));
+
+      if (Number.isFinite(maxPlayMs)) {
+        playTimeout = setTimeout(() => {
+          player.stop();
+        }, Math.max(0, maxPlayMs));
+      }
 
       player.once(AudioPlayerStatus.Idle, onIdle);
       player.once('error', finish);
@@ -614,6 +708,69 @@ async function pickRandomNoise() {
     : null;
 }
 
+async function findNoiseByName(name) {
+  const normalizedName = normalizeNoiseName(name);
+  const noises = await getAvailableVoiceNoises();
+
+  return noises.find((noise) => noise.matchNames.some((matchName) => normalizeNoiseName(matchName) === normalizedName)) ||
+    noises.find((noise) => noise.matchNames.some((matchName) => normalizeNoiseName(matchName).includes(normalizedName))) ||
+    null;
+}
+
+async function respondWithNoiseAutocomplete(interaction) {
+  const focused = interaction.options.getFocused();
+  const normalizedFocused = normalizeNoiseName(focused);
+  const noises = await getAvailableVoiceNoises();
+  const matches = noises
+    .filter((noise) => {
+      if (!normalizedFocused) {
+        return true;
+      }
+
+      return noise.matchNames.some((matchName) => normalizeNoiseName(matchName).includes(normalizedFocused));
+    })
+    .slice(0, 25)
+    .map((noise) => ({
+      name: noise.name.slice(0, 100),
+      value: noise.name.slice(0, 100),
+    }));
+
+  await interaction.respond(matches);
+}
+
+async function getAvailableVoiceNoises() {
+  const [sanityNoises, localNoiseFiles] = await Promise.all([
+    getSanityVoiceNoises(),
+    getLocalNoiseFiles(),
+  ]);
+
+  return [
+    ...sanityNoises.map((noise) => {
+      const name = noise.title || noise.originalFilename || noise.url;
+
+      return {
+        url: noise.url,
+        name,
+        matchNames: [
+          name,
+          noise.title,
+          noise.originalFilename,
+          stripExtension(noise.originalFilename),
+        ].filter(Boolean),
+      };
+    }),
+    ...localNoiseFiles.map((file) => {
+      const basename = path.basename(file);
+
+      return {
+        url: file,
+        name: basename,
+        matchNames: [basename, stripExtension(basename)],
+      };
+    }),
+  ];
+}
+
 async function pickRandomSanityVoiceNoise() {
   const noises = await getSanityVoiceNoises();
 
@@ -629,6 +786,11 @@ async function pickRandomSanityVoiceNoise() {
 }
 
 async function pickRandomNoiseFile() {
+  const files = await getLocalNoiseFiles();
+  return files.length > 0 ? pick(files) : null;
+}
+
+async function getLocalNoiseFiles() {
   const noiseDir = path.resolve(config.voiceNoiseDir);
   const supportedExtensions = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.webm']);
 
@@ -638,14 +800,22 @@ async function pickRandomNoiseFile() {
       .filter((entry) => entry.isFile() && supportedExtensions.has(path.extname(entry.name).toLowerCase()))
       .map((entry) => path.join(noiseDir, entry.name));
 
-    return files.length > 0 ? pick(files) : null;
+    return files;
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.error(`Failed to read join noise directory ${noiseDir}:`, error);
     }
 
-    return null;
+    return [];
   }
+}
+
+function normalizeNoiseName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function stripExtension(filename) {
+  return filename ? filename.slice(0, filename.length - path.extname(filename).length) : filename;
 }
 
 async function getSanityTextReplies() {
