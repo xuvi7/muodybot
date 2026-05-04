@@ -1,9 +1,9 @@
 import 'dotenv/config';
 
-import { readdir } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import { inspect } from 'node:util';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import ffmpegPath from 'ffmpeg-static';
 import prism from 'prism-media';
 import {
@@ -424,98 +424,95 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
     return;
   }
 
-  const ffmpeg = new prism.FFmpeg({
-    args: [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      ...input.args,
-      '-analyzeduration',
-      '0',
-      '-f',
-      's16le',
-      '-ar',
-      '48000',
-      '-ac',
-      '2',
-    ],
-  });
-  let ffmpegErrorOutput = '';
+  try {
+    const ffmpeg = new prism.FFmpeg({
+      args: [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        ...input.args,
+        '-analyzeduration',
+        '0',
+        '-f',
+        's16le',
+        '-ar',
+        '48000',
+        '-ac',
+        '2',
+      ],
+    });
+    let ffmpegErrorOutput = '';
 
-  ffmpeg.process?.stderr?.on('data', (chunk) => {
-    ffmpegErrorOutput += chunk.toString();
-  });
+    ffmpeg.process?.stderr?.on('data', (chunk) => {
+      ffmpegErrorOutput += chunk.toString();
+    });
 
-  ffmpeg.process?.once('error', (error) => {
-    console.error(`Failed to start ffmpeg for join noise ${noiseFile.name}:`, error);
-  });
+    ffmpeg.process?.once('error', (error) => {
+      console.error(`Failed to start ffmpeg for join noise ${noiseFile.name}:`, error);
+    });
 
-  ffmpeg.process?.once('close', (code, processSignal) => {
-    if (code && code !== 0) {
-      console.error(
-        `ffmpeg exited with code ${code} while playing join noise ${noiseFile.name}.` +
-          (ffmpegErrorOutput ? ` stderr: ${ffmpegErrorOutput.trim()}` : ''),
-      );
-    } else if (processSignal && processSignal !== 'SIGKILL') {
-      console.error(`ffmpeg exited from signal ${processSignal} while playing join noise ${noiseFile.name}.`);
-    }
-  });
-
-  input.stream?.once('error', (error) => {
-    console.error(`Failed to stream join noise ${noiseFile.name}:`, error);
-    ffmpeg.destroy(error);
-  });
-
-  input.stream?.pipe(ffmpeg);
-
-  const resource = createAudioResource(ffmpeg, {
-    inputType: StreamType.Raw,
-  });
-
-  player.play(resource);
-  console.log(`Playing join noise: ${noiseFile.name}`);
-
-  await new Promise((resolve) => {
-    let finished = false;
-    const onAbort = () => {
-      player.stop();
-      finish();
-    };
-    const onIdle = () => {
-      player.stop();
-      finish();
-    };
-    const finish = () => {
-      if (finished) {
-        return;
+    ffmpeg.process?.once('close', (code, processSignal) => {
+      if (code && code !== 0) {
+        console.error(
+          `ffmpeg exited with code ${code} while playing join noise ${noiseFile.name}.` +
+            (ffmpegErrorOutput ? ` stderr: ${ffmpegErrorOutput.trim()}` : ''),
+        );
+      } else if (processSignal && processSignal !== 'SIGKILL') {
+        console.error(`ffmpeg exited from signal ${processSignal} while playing join noise ${noiseFile.name}.`);
       }
+    });
 
-      finished = true;
-      clearTimeout(playTimeout);
-      player.off(AudioPlayerStatus.Idle, onIdle);
-      player.off('error', finish);
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    const playTimeout = setTimeout(() => {
-      player.stop();
-    }, Math.max(0, maxPlayMs));
+    const resource = createAudioResource(ffmpeg, {
+      inputType: StreamType.Raw,
+    });
 
-    player.once(AudioPlayerStatus.Idle, onIdle);
-    player.once('error', finish);
-    signal?.addEventListener('abort', onAbort, { once: true });
+    player.play(resource);
+    console.log(`Playing join noise: ${noiseFile.name}`);
 
-    if (signal?.aborted) {
-      onAbort();
-    }
-  });
+    await new Promise((resolve) => {
+      let finished = false;
+      const onAbort = () => {
+        player.stop();
+        finish();
+      };
+      const onIdle = () => {
+        player.stop();
+        finish();
+      };
+      const finish = () => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+        clearTimeout(playTimeout);
+        player.off(AudioPlayerStatus.Idle, onIdle);
+        player.off('error', finish);
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      const playTimeout = setTimeout(() => {
+        player.stop();
+      }, Math.max(0, maxPlayMs));
+
+      player.once(AudioPlayerStatus.Idle, onIdle);
+      player.once('error', finish);
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      if (signal?.aborted) {
+        onAbort();
+      }
+    });
+  } finally {
+    await input.cleanup?.();
+  }
 }
 
 async function createNoiseInput(noiseFile, signal) {
   if (!isHttpUrl(noiseFile.url)) {
     return {
       args: ['-i', noiseFile.url],
-      stream: null,
+      cleanup: null,
     };
   }
 
@@ -529,25 +526,46 @@ async function createNoiseInput(noiseFile, signal) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    if (!response.body) {
-      throw new Error('Response did not include a readable body.');
-    }
-
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
     console.log(
       `Fetched join noise ${noiseFile.name}: ` +
         `${response.headers.get('content-type') || 'unknown content type'}, ` +
-        `${response.headers.get('content-length') || 'unknown'} bytes.`,
+        `${audioBuffer.byteLength} bytes.`,
     );
 
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'muodybot-noise-'));
+    const tempFile = path.join(tempDir, getSafeNoiseFilename(noiseFile));
+    await writeFile(tempFile, audioBuffer);
+
     return {
-      args: ['-i', '-'],
-      stream: Readable.fromWeb(response.body),
+      args: ['-i', tempFile],
+      cleanup: () => rm(tempDir, { recursive: true, force: true }),
     };
   } catch (error) {
     if (!signal?.aborted) {
       console.error(`Failed to fetch join noise ${noiseFile.name}:`, error);
     }
 
+    return null;
+  }
+}
+
+function getSafeNoiseFilename(noiseFile) {
+  const fallbackExtension = getExtensionFromUrl(noiseFile.url) || '.m4a';
+  const parsedName = path.parse(noiseFile.name || 'join-noise');
+  const safeName = (parsedName.name || 'join-noise')
+    .replace(/[^a-z0-9._-]/gi, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80);
+  const extension = parsedName.ext || fallbackExtension;
+  return `${safeName || 'join-noise'}${extension}`;
+}
+
+function getExtensionFromUrl(url) {
+  try {
+    const extension = path.extname(new URL(url).pathname);
+    return extension || null;
+  } catch {
     return null;
   }
 }
