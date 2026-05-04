@@ -17,8 +17,7 @@ import {
   respondWithNoiseAutocomplete,
   scheduleNextVoiceVisit,
 } from './voice.js';
-import { formatRobloxSuggestion, getRobloxSuggestions, shouldSuggestRoblox } from './roblox.js';
-import { pick } from './utils.js';
+import { pickMessageTriggerResponse } from './triggers.js';
 
 const client = new Client({
   intents: [
@@ -48,9 +47,9 @@ client.on('messageCreate', async (message) => {
 
   console.log(`Saw message from ${message.author.tag} in #${message.channel.name}.`);
 
-  if (shouldSuggestRoblox(message.content)) {
-    const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
-    await sendChatReply(message, formatRobloxSuggestion(pick(suggestions)));
+  const triggerResponse = await pickMessageTriggerResponse(message.content);
+  if (triggerResponse) {
+    await sendChatReply(message, triggerResponse);
     return;
   }
 

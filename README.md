@@ -7,7 +7,7 @@ A Discord bot that:
 - randomly responds to chat messages with Sanity text replies or image `muodies`, falling back to `yay`, `ok`, `or`, or `nope`
 - sends an immediate random reply with `/reply`
 - joins your current voice channel and plays a selected voice noise with `/playnoise`
-- suggests a random trending Roblox game when someone says `roblox`
+- responds to Sanity-managed message triggers, including Roblox game suggestions
 
 ## Setup
 
@@ -64,13 +64,14 @@ SANITY_TOKEN=your-read-token
 
 The bot uses `SANITY_TOKEN` for private audio files too. Without it, text and image queries may still work in some setups, but voice noises can fail when ffmpeg tries to read the protected file URL.
 
-The bot queries three document types:
+The bot queries four document types:
 
 - `muodyTextReply`: text responses for random chat replies
 - `muody`: image responses, called muodies
 - `muodyVoiceNoise`: audio files for voice joins
+- `muodyMessageTrigger`: custom message triggers and their response actions
 
-The optional `weight` field controls how often an item is picked relative to other enabled items. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES` and local files in `assets/noises`.
+The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `weight` is used when more than one trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES`, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
 ### Editing Sanity content
 
@@ -88,8 +89,25 @@ In Studio, create or edit these documents:
 - **Text Reply**: set `text`, keep `enabled` on, and publish.
 - **Muody**: upload an `image`, keep `enabled` on, and publish. The bot posts only the image, without the title or alt text.
 - **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
+- **Message Trigger**: add one or more `patterns`, choose a `matchType`, choose a `responseType`, keep `enabled` on, and publish.
 
 Use `weight` when one item should appear more often. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
+
+Message trigger response types:
+
+- `Text response`: sends the trigger's `responseText`.
+- `Random chat reply`: sends a random `muodyTextReply` or `muody` image.
+- `Roblox game suggestion`: fetches a trending Roblox game and sends it.
+
+To move the existing Roblox behavior into Sanity, create a **Message Trigger** with:
+
+```text
+Title: Roblox game suggestion
+Trigger patterns: roblox, what should we play, game suggestion, game suggestions, games to play
+Match type: Whole word or phrase
+Response type: Roblox game suggestion
+Enabled: true
+```
 
 To verify content from Studio, open the **Vision** tab and run:
 
@@ -107,6 +125,12 @@ For voice noises:
 
 ```groq
 *[_type == "muodyVoiceNoise" && enabled != false && defined(file.asset->url)]{title, "url": file.asset->url, weight}
+```
+
+For message triggers:
+
+```groq
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseText, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.

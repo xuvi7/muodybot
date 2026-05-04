@@ -46,10 +46,6 @@ export function formatRobloxSuggestion(game) {
   return pick(prompts).replace('{url}', game.url);
 }
 
-export function shouldSuggestRoblox(content) {
-  return /\b(roblox|what should we play|game suggestions?|games to play)\b/i.test(content);
-}
-
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {

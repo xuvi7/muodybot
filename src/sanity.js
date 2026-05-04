@@ -23,6 +23,13 @@ export async function getSanityVoiceNoises() {
   );
 }
 
+export async function getSanityMessageTriggers() {
+  return fetchSanityList(
+    'message triggers',
+    '*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseText, weight}',
+  );
+}
+
 async function fetchSanityList(label, query) {
   if (!config.sanityProjectId || !config.sanityDataset) {
     return [];
