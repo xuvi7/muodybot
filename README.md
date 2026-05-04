@@ -5,6 +5,7 @@ A Discord bot that:
 - randomly joins a voice channel between 11 PM and 3 AM when people are in voice
 - plays a random voice noise from Sanity, falling back to `assets/noises`
 - randomly responds to chat messages with Sanity text replies or image `muodies`, falling back to `yay`, `ok`, `or`, or `nope`
+- sends an immediate random reply with `/reply`
 - suggests a random trending Roblox game when someone says `roblox`
 
 ## Setup
@@ -35,12 +36,19 @@ npm start
 
 If `GUILD_ID` is set in `.env`, slash commands register to that server when the bot starts.
 
+## Commands
+
+- `/reply`: sends a random Sanity text reply or muody image immediately, without waiting for `RANDOM_REPLY_CHANCE`.
+- `/join`: tests joining your current voice channel and playing a voice noise.
+
 ## Sanity CMS assets
+
+This repo includes a Sanity Studio in `sanity/muody`. Use that Studio to add or edit the bot's CMS content.
 
 Set these in `.env` to read bot assets from Sanity:
 
 ```text
-SANITY_PROJECT_ID=your-project-id
+SANITY_PROJECT_ID=me88yh3c
 SANITY_DATASET=production
 SANITY_API_VERSION=2025-01-01
 SANITY_USE_CDN=true
@@ -58,7 +66,46 @@ The bot queries three document types:
 - `muody`: image responses, called muodies
 - `muodyVoiceNoise`: audio files for voice joins
 
-Schema files are included in `sanity/schemas`. Add those schema types to your Sanity Studio, then create enabled documents with uploaded image/audio assets. The optional `weight` field controls how often an item is picked relative to other enabled items. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES` and local files in `assets/noises`.
+The optional `weight` field controls how often an item is picked relative to other enabled items. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES` and local files in `assets/noises`.
+
+### Editing Sanity content
+
+Start the Studio:
+
+```bash
+cd sanity/muody
+npm run dev
+```
+
+Open the local Studio URL it prints, usually `http://localhost:3333`.
+
+In Studio, create or edit these documents:
+
+- **Text Reply**: set `text`, keep `enabled` on, and publish.
+- **Muody**: upload an `image`, keep `enabled` on, and publish. The bot posts only the image, without the title or alt text.
+- **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
+
+Use `weight` when one item should appear more often. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
+
+To verify content from Studio, open the **Vision** tab and run:
+
+```groq
+*[_type == "muodyTextReply" && enabled != false && defined(text)]{text, weight}
+```
+
+For image replies:
+
+```groq
+*[_type == "muody" && enabled != false && defined(image.asset->url)]{title, "url": image.asset->url, weight}
+```
+
+For voice noises:
+
+```groq
+*[_type == "muodyVoiceNoise" && enabled != false && defined(file.asset->url)]{title, "url": file.asset->url, weight}
+```
+
+After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.
 
 ## Join noises
 

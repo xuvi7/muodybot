@@ -78,6 +78,10 @@ const commands = [
     .setName('join')
     .setDescription('Test Muody joining your current voice channel')
     .toJSON(),
+  new SlashCommandBuilder()
+    .setName('reply')
+    .setDescription('Send a random Muody reply without waiting for random chance')
+    .toJSON(),
 ];
 
 client.once(Events.ClientReady, async () => {
@@ -126,6 +130,11 @@ client.on('interactionCreate', async (interaction) => {
 
     const joined = await joinVoiceChannelAndPlayNoise(channel);
     await interaction.editReply(joined ? 'Joined and tried to play a noise.' : 'Joined visually, but Discord voice never became ready. Check the terminal logs.');
+    return;
+  }
+
+  if (interaction.commandName === 'reply') {
+    await interaction.reply(formatDiscordReply(await pickRandomChatResponse()));
   }
 });
 
@@ -165,13 +174,11 @@ function formatDiscordReply(response) {
 
   if (response?.type === 'muody' && response.url) {
     return {
-      content: response.title || undefined,
       embeds: [
         {
           image: {
             url: response.url,
           },
-          ...(response.altText ? { description: response.altText } : {}),
         },
       ],
     };
