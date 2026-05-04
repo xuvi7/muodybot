@@ -1,6 +1,7 @@
 import { formatRobloxSuggestion, getRobloxSuggestions } from './roblox.js';
 import { config } from './config.js';
 import { pickRandomChatResponse } from './chat.js';
+import { getRandomGif } from './gifs.js';
 import { getSanityMessageTriggers } from './sanity.js';
 import { pick, weightedPick } from './utils.js';
 
@@ -38,6 +39,10 @@ async function getTriggerResponse(trigger) {
 
   if (trigger.responseType === 'randomReply') {
     return pickRandomChatResponse();
+  }
+
+  if (trigger.responseType === 'randomGif') {
+    return getRandomGif(trigger.gifPrompt);
   }
 
   if (isCustomResponseTrigger(trigger)) {

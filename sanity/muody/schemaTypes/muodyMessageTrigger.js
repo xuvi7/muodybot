@@ -41,11 +41,24 @@ export default {
         list: [
           { title: 'Custom responses', value: 'responses' },
           { title: 'Random chat reply', value: 'randomReply' },
+          { title: 'Random GIF', value: 'randomGif' },
           { title: 'Roblox game suggestion', value: 'robloxSuggestion' },
         ],
         layout: 'radio',
       },
       validation: (Rule) => Rule.required(),
+    },
+    {
+      name: 'gifPrompt',
+      title: 'GIF prompt',
+      description: 'Search prompt used when this trigger sends a random GIF.',
+      type: 'string',
+      hidden: ({ parent }) => parent?.responseType !== 'randomGif',
+      validation: (Rule) => Rule.custom((value, context) => (
+        context?.parent?.responseType === 'randomGif' && !value?.trim()
+          ? 'Add a GIF prompt.'
+          : true
+      )),
     },
     {
       name: 'responseTexts',
@@ -158,6 +171,10 @@ export default {
     },
   },
   validation: (Rule) => Rule.custom((document) => {
+    if (document?.responseType === 'randomGif') {
+      return document?.gifPrompt?.trim() ? true : 'Add a GIF prompt.';
+    }
+
     if (!isCustomResponseType(document?.responseType)) {
       return true;
     }

@@ -73,6 +73,15 @@ The bot queries four document types:
 
 The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES`, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
+Random GIF trigger responses use Klipy. Set this in `.env`:
+
+```text
+KLIPY_API_KEY=your-klipy-api-key
+KLIPY_CLIENT_KEY=muodybot
+GIF_RESULT_LIMIT=25
+GIF_CONTENT_FILTER=medium
+```
+
 ### Editing Sanity content
 
 Start the Studio:
@@ -97,6 +106,7 @@ Message trigger response types:
 
 - `Custom responses`: randomly sends one item from `responseTexts` and `responseMedia`.
 - `Random chat reply`: sends a random `muodyTextReply` or `muody` media item.
+- `Random GIF`: searches Klipy with `gifPrompt` and sends one random matching GIF.
 - `Roblox game suggestion`: fetches a trending Roblox game and sends it.
 
 To move the existing Roblox behavior into Sanity, create a **Message Trigger** with:
@@ -130,7 +140,7 @@ For voice noises:
 For message triggers:
 
 ```groq
-*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, priority, weight}
+*[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, gifPrompt, priority, weight}
 ```
 
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.

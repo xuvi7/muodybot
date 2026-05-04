@@ -20,6 +20,10 @@ export function formatDiscordReply(response) {
     return response;
   }
 
+  if (response?.type === 'gif' && response.url) {
+    return response.url;
+  }
+
   if (response?.type === 'muody' && response.url) {
     if (isVideoResponse(response)) {
       return response.url;
