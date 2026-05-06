@@ -51,6 +51,30 @@ export function scheduleNextVoiceVisit(client) {
   }, delay);
 }
 
+export function scheduleVoiceVisitAt(channel, visitAt, noiseFile = null) {
+  const delay = visitAt.getTime() - Date.now();
+
+  if (!Number.isFinite(delay) || delay < 0) {
+    return false;
+  }
+
+  console.log(
+    `Scheduled privileged voice visit in ${channel.name} in ${channel.guild.name} for ${visitAt.toISOString()}.`,
+  );
+
+  setTimeout(async () => {
+    const joined = noiseFile
+      ? await joinVoiceChannelAndPlaySpecificNoise(channel, noiseFile)
+      : await joinVoiceChannelAndPlayNoise(channel);
+
+    if (joined) {
+      console.log(`Completed privileged scheduled voice visit in ${channel.name}.`);
+    }
+  }, delay);
+
+  return true;
+}
+
 export async function joinVoiceChannelAndPlayNoise(channel) {
   return joinVoiceChannelForSession(channel, playJoinNoiseSession, 'voice visit');
 }

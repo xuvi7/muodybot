@@ -10,6 +10,7 @@ if (!token) {
 
 export const config = {
   guildId: process.env.GUILD_ID || null,
+  privilegedUserIds: readCsv(process.env.PRIVILEGED_USER_IDS || process.env.ADMIN_USER_IDS, []),
   randomReplyChance: readNumber(process.env.RANDOM_REPLY_CHANCE, 0.08),
   randomReplies: readCsv(process.env.RANDOM_REPLIES, ['yay', 'ok', 'or', 'nope']),
   sanityProjectId: process.env.SANITY_PROJECT_ID || null,

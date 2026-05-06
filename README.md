@@ -7,6 +7,7 @@ A Discord bot that:
 - randomly responds to chat messages with Sanity text replies or image `muodies`, falling back to `yay`, `ok`, `or`, or `nope`
 - sends an immediate random reply with `/reply`
 - joins your current voice channel and plays a selected voice noise with `/playnoise`
+- exposes privileged controls for an allowlisted set of Discord users
 - responds to Sanity-managed message triggers, including Roblox game suggestions
 
 ## Setup
@@ -42,6 +43,21 @@ If `GUILD_ID` is set in `.env`, slash commands register to that server when the 
 - `/reply`: sends a random Sanity text reply or muody media item immediately, without waiting for `RANDOM_REPLY_CHANCE`.
 - `/join`: tests joining your current voice channel and playing voice noises.
 - `/playnoise clip:<name>`: joins your current voice channel, plays the selected Sanity or local voice noise once, then leaves. The `clip` option autocompletes from available voice noise titles and filenames.
+
+## Privileged controls
+
+Set `PRIVILEGED_USER_IDS` to a comma-separated list of Discord user IDs that can use privileged commands:
+
+```text
+PRIVILEGED_USER_IDS=123456789012345678,234567890123456789
+```
+
+These slash commands are registered for everyone but only users in that allowlist can run them:
+
+- `/muody say channel:<channel> message:<message>`: sends a specific message as the bot.
+- `/muody reply-to target:<message-id-or-link> message:<message> [channel:<channel>]`: replies to a specific message as the bot. A full Discord message link includes the channel; use `channel` when `target` is only a message ID from another channel.
+- `/muody set-reply-chance chance:<0-1>`: changes the random chat reply frequency until the bot restarts. For example, `0.08` means 8%.
+- `/muody schedule-join channel:<voice-channel> when:<time> [clip:<name>]`: schedules one voice join. `when` accepts ISO timestamps, `YYYY-MM-DD HH:mm`, `today HH:mm`, `tomorrow HH:mm`, or relative values like `+10m` and `+1h`. Local times use `TIME_ZONE`.
 
 ## Sanity CMS assets
 
