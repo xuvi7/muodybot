@@ -183,14 +183,7 @@ export const commands = [
     .addSubcommand((subcommand) =>
       subcommand
         .setName('stats')
-        .setDescription('Show Muody usage stats')
-        .addIntegerOption((option) =>
-          option
-            .setName('days')
-            .setDescription('Number of recent days to include')
-            .setMinValue(1)
-            .setMaxValue(365),
-        ),
+        .setDescription('Show Muody usage stats'),
     )
     .addSubcommand((subcommand) =>
       subcommand

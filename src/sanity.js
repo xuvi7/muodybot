@@ -3,6 +3,7 @@ import { config } from './config.js';
 const sanityCache = new Map();
 
 export const botSettingsDocumentId = 'muodyBotSettings';
+export const usageStatsDocumentId = 'muodyUsageStats';
 
 export async function getSanityTextReplies() {
   return fetchSanityList(
@@ -85,12 +86,12 @@ export async function updateSanityBotSettings(fields) {
   sanityCache.clear();
 }
 
-export async function createSanityUsageEvents(events) {
+export async function updateSanityUsageStats(summary) {
   if (!config.sanityProjectId || !config.sanityDataset || !config.sanityToken) {
     return false;
   }
 
-  if (!Array.isArray(events) || events.length === 0) {
+  if (!summary) {
     return true;
   }
 
@@ -102,32 +103,57 @@ export async function createSanityUsageEvents(events) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      mutations: events.map((event) => ({
-        create: {
-          _type: 'muodyUsageEvent',
-          createdAt: event.createdAt || new Date().toISOString(),
-          ...removeUndefinedValues(event),
+      mutations: [
+        {
+          createIfNotExists: {
+            _id: usageStatsDocumentId,
+            _type: 'muodyUsageStats',
+            title: 'Muody Usage Stats',
+            totalEvents: 0,
+            eventTypes: [],
+            triggers: [],
+            noises: [],
+            replyTargets: [],
+            commandUsers: [],
+            commands: [],
+          },
         },
-      })),
+        {
+          patch: {
+            id: usageStatsDocumentId,
+            set: {
+              ...summary,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+      ],
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Sanity usage event write failed with HTTP ${response.status}`);
+    throw new Error(`Sanity usage stats write failed with HTTP ${response.status}`);
   }
 
   return true;
 }
 
-export async function getSanityUsageEvents(days = 30, limit = 500) {
-  const since = new Date(Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000).toISOString();
-  const safeLimit = Math.min(1000, Math.max(1, Math.round(limit)));
-
-  return fetchSanityValue(
-    'usage events',
-    `*[_type == "muodyUsageEvent" && createdAt >= "${since}"] | order(createdAt desc)[0...${safeLimit}]{eventType, createdAt, guildId, guildName, channelId, channelName, userId, username, commandName, subcommandName, triggerTitle, responseType, noiseName, source}`,
-    [],
+export async function getSanityUsageStats() {
+  const stats = await fetchSanityValue(
+    'usage stats',
+    `*[_id == "${usageStatsDocumentId}"][0]{totalEvents, eventTypes[]{name, count}, triggers[]{name, count}, noises[]{name, count}, replyTargets[]{name, count}, commandUsers[]{name, count}, commands[]{name, count}}`,
+    null,
   );
+
+  return stats || {
+    totalEvents: 0,
+    eventTypes: [],
+    triggers: [],
+    noises: [],
+    replyTargets: [],
+    commandUsers: [],
+    commands: [],
+  };
 }
 
 export function clearSanityCache() {

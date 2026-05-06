@@ -2,7 +2,7 @@ import muodyBotSettings from './muodyBotSettings.js';
 import muody from './muody.js';
 import muodyMessageTrigger from './muodyMessageTrigger.js';
 import muodyTextReply from './muodyTextReply.js';
-import muodyUsageEvent from './muodyUsageEvent.js';
+import muodyUsageStats from './muodyUsageStats.js';
 import muodyVoiceNoise from './muodyVoiceNoise.js';
 
 export const schemaTypes = [
@@ -11,5 +11,5 @@ export const schemaTypes = [
   muodyVoiceNoise,
   muodyMessageTrigger,
   muodyBotSettings,
-  muodyUsageEvent,
+  muodyUsageStats,
 ];

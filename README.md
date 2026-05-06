@@ -63,7 +63,7 @@ These slash commands are registered for everyone but only users in that allowlis
 - `/muody set-channel-triggers channel:<channel> enabled:<true|false>`: enables or disables Sanity message triggers in one channel.
 - `/muody set-channel-chance channel:<channel> chance:<0-1>`: sets one channel's random chat reply frequency.
 - `/muody clear-channel-settings channel:<channel>`: removes one channel's persistent overrides so it uses the default settings again.
-- `/muody stats [days:<1-365>]`: shows usage stats, including top triggers, top noises, reply targets, command users, and commands.
+- `/muody stats`: shows usage stats, including top triggers, top noises, reply targets, command users, and commands.
 - `/muody flush-stats`: flushes queued usage stats to Sanity immediately.
 - `/muody cache-status`: shows cached Sanity query count, cache length, and next cache reset time.
 - `/muody reset-cache`: clears cached Sanity content immediately.
@@ -94,9 +94,9 @@ The bot queries six document types:
 - `muodyVoiceNoise`: audio files for voice joins
 - `muodyMessageTrigger`: custom message triggers and their response actions
 - `muodyBotSettings`: persistent default and per-channel bot settings
-- `muodyUsageEvent`: usage stats events for replies, triggers, noises, and commands
+- `muodyUsageStats`: singleton usage counters for replies, triggers, noises, and commands
 
-Usage events are batched in memory and flushed to Sanity every hour or after 25 events, whichever comes first. The in-memory queue is capped at 500 events. Sanity query results are cached for one day by default.
+Usage events are batched in memory and flushed into one Sanity counter document every hour or after 25 events, whichever comes first. The in-memory queue is capped at 500 events, and persisted top lists are capped to keep the document small. Sanity query results are cached for one day by default.
 
 The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using built-in settings defaults, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 

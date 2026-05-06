@@ -280,9 +280,8 @@ async function handlePrivilegedMuodyCommand(interaction) {
 }
 
 async function handlePrivilegedStatsCommand(interaction) {
-  const days = interaction.options.getInteger('days') || 30;
-  const stats = await getUsageStats(days);
-  await interaction.editReply(formatUsageStats(stats, days));
+  const stats = await getUsageStats();
+  await interaction.editReply(formatUsageStats(stats));
 }
 
 async function handlePrivilegedFlushStatsCommand(interaction) {

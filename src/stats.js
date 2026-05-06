@@ -1,9 +1,10 @@
-import { createSanityUsageEvents, getSanityUsageEvents } from './sanity.js';
+import { getSanityUsageStats, updateSanityUsageStats } from './sanity.js';
 
 const usageEventQueue = [];
 const flushIntervalMs = 60 * 60 * 1000;
 const flushBatchSize = 25;
 const maxQueuedEvents = 500;
+const maxPersistedCounters = 25;
 let flushTimer = null;
 let flushInProgress = false;
 
@@ -35,7 +36,7 @@ export async function flushUsageEvents() {
   const events = usageEventQueue.splice(0, flushBatchSize);
 
   try {
-    const wroteEvents = await createSanityUsageEvents(events);
+    const wroteEvents = await flushEventSummaries(events);
 
     if (!wroteEvents) {
       return false;
@@ -113,40 +114,30 @@ export function getVoiceContext(channel) {
   };
 }
 
-export async function getUsageStats(days = 30) {
-  const queuedEvents = getQueuedUsageEvents(days);
-  const persistedEvents = await getSanityUsageEvents(days);
-  const events = [...persistedEvents, ...queuedEvents];
+export async function getUsageStats() {
+  const queuedSummary = summarizeEvents(usageEventQueue);
+  const persistedSummary = await getSanityUsageStats();
+  const summary = mergeUsageSummaries([persistedSummary, queuedSummary]);
 
   return {
-    totalEvents: events.length,
-    persistedEvents: persistedEvents.length,
-    queuedEvents: queuedEvents.length,
-    topTriggers: countTop(events, 'triggerTitle', (event) => event.eventType === 'trigger_reply'),
-    topNoises: countTop(events, 'noiseName', (event) => event.eventType === 'noise_play'),
-    topReplyTargets: countTop(
-      events,
-      (event) => event.username || event.userId,
-      (event) => ['trigger_reply', 'random_reply', 'manual_reply'].includes(event.eventType),
-    ),
-    topCommandUsers: countTop(
-      events,
-      (event) => event.username || event.userId,
-      (event) => event.eventType === 'command',
-    ),
-    topCommands: countTop(
-      events,
-      (event) => [event.commandName, event.subcommandName].filter(Boolean).join(' '),
-      (event) => event.eventType === 'command',
-    ),
+    totalEvents: summary.totalEvents,
+    persistedEvents: Number(persistedSummary.totalEvents) || 0,
+    queuedEvents: usageEventQueue.length,
+    topEventTypes: topCounters(summary.eventTypes),
+    topTriggers: topCounters(summary.triggers),
+    topNoises: topCounters(summary.noises),
+    topReplyTargets: topCounters(summary.replyTargets),
+    topCommandUsers: topCounters(summary.commandUsers),
+    topCommands: topCounters(summary.commands),
   };
 }
 
-export function formatUsageStats(stats, days = 30) {
+export function formatUsageStats(stats) {
   return [
-    `Usage stats for the last ${days} day(s):`,
+    'Usage stats:',
     `Events counted: ${stats.totalEvents} (${stats.persistedEvents} persisted, ${stats.queuedEvents} queued)`,
     '',
+    formatTopList('Event types', stats.topEventTypes),
     formatTopList('Top triggers', stats.topTriggers),
     formatTopList('Top noises', stats.topNoises),
     formatTopList('Who Muody replies to', stats.topReplyTargets),
@@ -155,38 +146,110 @@ export function formatUsageStats(stats, days = 30) {
   ].join('\n');
 }
 
-function getQueuedUsageEvents(days) {
-  const since = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+async function flushEventSummaries(events) {
+  const existingSummary = await getSanityUsageStats();
+  const mergedSummary = mergeUsageSummaries([existingSummary, summarizeEvents(events)]);
 
-  return usageEventQueue.filter((event) => {
-    const createdAt = new Date(event.createdAt).getTime();
-    return Number.isFinite(createdAt) && createdAt >= since;
-  });
+  return updateSanityUsageStats(trimUsageSummary(mergedSummary));
 }
 
-function countTop(events, keyOrGetter, filter = () => true, limit = 5) {
-  const counts = new Map();
-  const getKey = typeof keyOrGetter === 'function'
-    ? keyOrGetter
-    : (event) => event[keyOrGetter];
+function summarizeEvents(events) {
+  const summary = createEmptySummary();
 
   for (const event of events) {
-    if (!filter(event)) {
-      continue;
-    }
-
-    const key = getKey(event);
-    if (!key) {
-      continue;
-    }
-
-    counts.set(key, (counts.get(key) || 0) + 1);
+    addEventToSummary(summary, event);
   }
 
-  return [...counts.entries()]
-    .map(([name, count]) => ({ name, count }))
+  return summary;
+}
+
+function mergeUsageSummaries(summaries) {
+  const summary = createEmptySummary();
+
+  for (const item of summaries.filter(Boolean)) {
+    summary.totalEvents += Number(item.totalEvents) || 0;
+    mergeCounters(summary.eventTypes, item.eventTypes);
+    mergeCounters(summary.triggers, item.triggers);
+    mergeCounters(summary.noises, item.noises);
+    mergeCounters(summary.replyTargets, item.replyTargets);
+    mergeCounters(summary.commandUsers, item.commandUsers);
+    mergeCounters(summary.commands, item.commands);
+  }
+
+  return summary;
+}
+
+function addEventToSummary(summary, event) {
+  summary.totalEvents += 1;
+  incrementCounter(summary.eventTypes, event.eventType);
+
+  if (event.eventType === 'trigger_reply') {
+    incrementCounter(summary.triggers, event.triggerTitle);
+  }
+
+  if (event.eventType === 'noise_play') {
+    incrementCounter(summary.noises, event.noiseName);
+  }
+
+  if (['trigger_reply', 'random_reply', 'manual_reply'].includes(event.eventType)) {
+    incrementCounter(summary.replyTargets, event.username || event.userId);
+  }
+
+  if (event.eventType === 'command') {
+    incrementCounter(summary.commandUsers, event.username || event.userId);
+    incrementCounter(summary.commands, [event.commandName, event.subcommandName].filter(Boolean).join(' '));
+  }
+}
+
+function createEmptySummary() {
+  return {
+    totalEvents: 0,
+    eventTypes: [],
+    triggers: [],
+    noises: [],
+    replyTargets: [],
+    commandUsers: [],
+    commands: [],
+  };
+}
+
+function incrementCounter(counters, name, amount = 1) {
+  if (!name) {
+    return;
+  }
+
+  const counter = counters.find((item) => item.name === name);
+
+  if (counter) {
+    counter.count += amount;
+    return;
+  }
+
+  counters.push({ name, count: amount });
+}
+
+function mergeCounters(target, source) {
+  for (const counter of Array.isArray(source) ? source : []) {
+    incrementCounter(target, counter.name, Number(counter.count) || 0);
+  }
+}
+
+function topCounters(counters, limit = 5) {
+  return [...(Array.isArray(counters) ? counters : [])]
     .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
     .slice(0, limit);
+}
+
+function trimUsageSummary(summary) {
+  return {
+    ...summary,
+    eventTypes: topCounters(summary.eventTypes, maxPersistedCounters),
+    triggers: topCounters(summary.triggers, maxPersistedCounters),
+    noises: topCounters(summary.noises, maxPersistedCounters),
+    replyTargets: topCounters(summary.replyTargets, maxPersistedCounters),
+    commandUsers: topCounters(summary.commandUsers, maxPersistedCounters),
+    commands: topCounters(summary.commands, maxPersistedCounters),
+  };
 }
 
 function formatTopList(title, items) {
