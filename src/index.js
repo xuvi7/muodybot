@@ -32,6 +32,7 @@ import {
 } from './settings.js';
 import {
   formatUsageStats,
+  flushAllUsageEvents,
   getInteractionContext,
   getMessageContext,
   getUsageStats,
@@ -59,6 +60,21 @@ client.once(Events.ClientReady, async () => {
     console.log('Random scheduled voice joins are disabled.');
   }
 });
+
+process.once('SIGINT', () => {
+  shutdown('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+  shutdown('SIGTERM');
+});
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}; flushing usage stats before shutdown.`);
+  await flushAllUsageEvents();
+  client.destroy();
+  process.exit(0);
+}
 
 async function initializePersistentSettings() {
   try {

@@ -1,9 +1,68 @@
-import { createSanityUsageEvent, getSanityUsageEvents } from './sanity.js';
+import { createSanityUsageEvents, getSanityUsageEvents } from './sanity.js';
+
+const usageEventQueue = [];
+const flushIntervalMs = 30_000;
+const flushBatchSize = 25;
+const maxQueuedEvents = 500;
+let flushTimer = null;
+let flushInProgress = false;
 
 export function recordUsageEvent(event) {
-  createSanityUsageEvent(event).catch((error) => {
-    console.error('Failed to record usage event:', error);
+  usageEventQueue.push({
+    createdAt: new Date().toISOString(),
+    ...event,
   });
+
+  if (usageEventQueue.length > maxQueuedEvents) {
+    usageEventQueue.splice(0, usageEventQueue.length - maxQueuedEvents);
+  }
+
+  if (usageEventQueue.length >= flushBatchSize) {
+    flushUsageEvents();
+    return;
+  }
+
+  scheduleUsageFlush();
+}
+
+export async function flushUsageEvents() {
+  if (flushInProgress || usageEventQueue.length === 0) {
+    return true;
+  }
+
+  clearUsageFlushTimer();
+  flushInProgress = true;
+  const events = usageEventQueue.splice(0, flushBatchSize);
+
+  try {
+    const wroteEvents = await createSanityUsageEvents(events);
+
+    if (!wroteEvents) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to flush usage events:', error);
+    requeueUsageEvents(events);
+    return false;
+  } finally {
+    flushInProgress = false;
+
+    if (usageEventQueue.length > 0) {
+      scheduleUsageFlush();
+    }
+  }
+}
+
+export async function flushAllUsageEvents() {
+  while (usageEventQueue.length > 0) {
+    const flushed = await flushUsageEvents();
+
+    if (!flushed || flushInProgress) {
+      break;
+    }
+  }
 }
 
 export function getMessageContext(message) {
@@ -115,5 +174,32 @@ function getInteractionSubcommand(interaction) {
     return interaction.options.getSubcommand(false) || null;
   } catch {
     return null;
+  }
+}
+
+function scheduleUsageFlush() {
+  if (flushTimer) {
+    return;
+  }
+
+  flushTimer = setTimeout(() => {
+    flushUsageEvents();
+  }, flushIntervalMs);
+}
+
+function clearUsageFlushTimer() {
+  if (!flushTimer) {
+    return;
+  }
+
+  clearTimeout(flushTimer);
+  flushTimer = null;
+}
+
+function requeueUsageEvents(events) {
+  usageEventQueue.unshift(...events);
+
+  if (usageEventQueue.length > maxQueuedEvents) {
+    usageEventQueue.length = maxQueuedEvents;
   }
 }

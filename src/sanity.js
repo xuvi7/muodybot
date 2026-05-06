@@ -85,9 +85,13 @@ export async function updateSanityBotSettings(fields) {
   sanityCache.clear();
 }
 
-export async function createSanityUsageEvent(event) {
+export async function createSanityUsageEvents(events) {
   if (!config.sanityProjectId || !config.sanityDataset || !config.sanityToken) {
     return false;
+  }
+
+  if (!Array.isArray(events) || events.length === 0) {
+    return true;
   }
 
   const response = await fetch(getSanityMutateEndpoint(), {
@@ -98,15 +102,13 @@ export async function createSanityUsageEvent(event) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      mutations: [
-        {
-          create: {
-            _type: 'muodyUsageEvent',
-            createdAt: new Date().toISOString(),
-            ...removeUndefinedValues(event),
-          },
+      mutations: events.map((event) => ({
+        create: {
+          _type: 'muodyUsageEvent',
+          createdAt: event.createdAt || new Date().toISOString(),
+          ...removeUndefinedValues(event),
         },
-      ],
+      })),
     }),
   });
 
