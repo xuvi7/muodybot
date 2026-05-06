@@ -194,6 +194,21 @@ export const commands = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName('flush-stats')
+        .setDescription('Flush queued Muody usage stats to Sanity now'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('cache-status')
+        .setDescription('Show Sanity cache status and next reset time'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('reset-cache')
+        .setDescription('Clear cached Sanity content immediately'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName('schedule-join')
         .setDescription('Schedule Muody to join a specific voice channel once')
         .addChannelOption((option) =>

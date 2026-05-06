@@ -10,6 +10,7 @@ import { generateDependencyReport } from '@discordjs/voice';
 import { formatDiscordReply, pickRandomChatResponse, sendChatReply } from './chat.js';
 import { registerCommands } from './commands.js';
 import { config, token } from './config.js';
+import { clearSanityCache, getSanityCacheStatus } from './sanity.js';
 import {
   findNoiseByName,
   joinVoiceChannelAndPlayNoise,
@@ -35,6 +36,7 @@ import {
   flushAllUsageEvents,
   getInteractionContext,
   getMessageContext,
+  getUsageFlushStatus,
   getUsageStats,
   recordUsageEvent,
 } from './stats.js';
@@ -257,6 +259,21 @@ async function handlePrivilegedMuodyCommand(interaction) {
     return;
   }
 
+  if (subcommand === 'flush-stats') {
+    await handlePrivilegedFlushStatsCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'cache-status') {
+    await handlePrivilegedCacheStatusCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'reset-cache') {
+    await handlePrivilegedResetCacheCommand(interaction);
+    return;
+  }
+
   if (subcommand === 'schedule-join') {
     await handlePrivilegedScheduleJoinCommand(interaction);
   }
@@ -266,6 +283,36 @@ async function handlePrivilegedStatsCommand(interaction) {
   const days = interaction.options.getInteger('days') || 30;
   const stats = await getUsageStats(days);
   await interaction.editReply(formatUsageStats(stats, days));
+}
+
+async function handlePrivilegedFlushStatsCommand(interaction) {
+  const before = getUsageFlushStatus();
+  await flushAllUsageEvents();
+  const after = getUsageFlushStatus();
+
+  await interaction.editReply(
+    `Flushed usage stats. Queued events: ${before.queuedEvents} -> ${after.queuedEvents}.`,
+  );
+}
+
+async function handlePrivilegedCacheStatusCommand(interaction) {
+  const status = getSanityCacheStatus();
+  const nextReset = status.nextResetAt
+    ? `${formatScheduledTime(status.nextResetAt)} (${status.secondsUntilNextReset}s)`
+    : 'none';
+
+  await interaction.editReply(
+    [
+      `Cached Sanity queries: ${status.cachedQueries}`,
+      `Cache length: ${status.cacheSeconds}s`,
+      `Next cache reset: ${nextReset}`,
+    ].join('\n'),
+  );
+}
+
+async function handlePrivilegedResetCacheCommand(interaction) {
+  const entriesCleared = clearSanityCache();
+  await interaction.editReply(`Cleared ${entriesCleared} cached Sanity quer${entriesCleared === 1 ? 'y' : 'ies'}.`);
 }
 
 async function handlePrivilegedSayCommand(interaction) {

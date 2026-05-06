@@ -130,6 +130,27 @@ export async function getSanityUsageEvents(days = 30, limit = 500) {
   );
 }
 
+export function clearSanityCache() {
+  const entriesCleared = sanityCache.size;
+  sanityCache.clear();
+  return entriesCleared;
+}
+
+export function getSanityCacheStatus() {
+  const now = Date.now();
+  const expiryTimes = [...sanityCache.values()]
+    .map((entry) => entry.expiresAt)
+    .filter(Number.isFinite);
+  const nextExpiresAt = expiryTimes.length > 0 ? Math.min(...expiryTimes) : null;
+
+  return {
+    cachedQueries: sanityCache.size,
+    cacheSeconds: Math.max(0, config.sanityCacheSeconds),
+    nextResetAt: nextExpiresAt ? new Date(nextExpiresAt) : null,
+    secondsUntilNextReset: nextExpiresAt ? Math.max(0, Math.ceil((nextExpiresAt - now) / 1000)) : null,
+  };
+}
+
 async function fetchSanityList(label, query) {
   return fetchSanityValue(label, query, []);
 }

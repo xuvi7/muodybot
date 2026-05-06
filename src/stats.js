@@ -1,7 +1,7 @@
 import { createSanityUsageEvents, getSanityUsageEvents } from './sanity.js';
 
 const usageEventQueue = [];
-const flushIntervalMs = 30_000;
+const flushIntervalMs = 60 * 60 * 1000;
 const flushBatchSize = 25;
 const maxQueuedEvents = 500;
 let flushTimer = null;
@@ -63,6 +63,16 @@ export async function flushAllUsageEvents() {
       break;
     }
   }
+}
+
+export function getUsageFlushStatus() {
+  return {
+    queuedEvents: usageEventQueue.length,
+    flushIntervalMs,
+    flushBatchSize,
+    maxQueuedEvents,
+    flushInProgress,
+  };
 }
 
 export function getMessageContext(message) {

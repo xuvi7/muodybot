@@ -16,7 +16,7 @@ export const config = {
   sanityApiVersion: process.env.SANITY_API_VERSION || '2025-01-01',
   sanityToken: process.env.SANITY_TOKEN || null,
   sanityUseCdn: readBoolean(process.env.SANITY_USE_CDN, true),
-  sanityCacheSeconds: readNumber(process.env.SANITY_CACHE_SECONDS, 300),
+  sanityCacheSeconds: readNumber(process.env.SANITY_CACHE_SECONDS, 86_400),
   klipyApiKey: process.env.KLIPY_API_KEY || null,
   klipyClientKey: process.env.KLIPY_CLIENT_KEY || 'muodybot',
 };

@@ -64,6 +64,9 @@ These slash commands are registered for everyone but only users in that allowlis
 - `/muody set-channel-chance channel:<channel> chance:<0-1>`: sets one channel's random chat reply frequency.
 - `/muody clear-channel-settings channel:<channel>`: removes one channel's persistent overrides so it uses the default settings again.
 - `/muody stats [days:<1-365>]`: shows usage stats, including top triggers, top noises, reply targets, command users, and commands.
+- `/muody flush-stats`: flushes queued usage stats to Sanity immediately.
+- `/muody cache-status`: shows cached Sanity query count, cache length, and next cache reset time.
+- `/muody reset-cache`: clears cached Sanity content immediately.
 - `/muody schedule-join channel:<voice-channel> when:<time> [clip:<name>]`: schedules one voice join. `when` accepts ISO timestamps, `YYYY-MM-DD HH:mm`, `today HH:mm`, `tomorrow HH:mm`, or relative values like `+10m` and `+1h`. Local times use the time zone from Bot Settings.
 
 ## Sanity CMS assets
@@ -92,6 +95,8 @@ The bot queries six document types:
 - `muodyMessageTrigger`: custom message triggers and their response actions
 - `muodyBotSettings`: persistent default and per-channel bot settings
 - `muodyUsageEvent`: usage stats events for replies, triggers, noises, and commands
+
+Usage events are batched in memory and flushed to Sanity every hour or after 25 events, whichever comes first. The in-memory queue is capped at 500 events. Sanity query results are cached for one day by default.
 
 The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using built-in settings defaults, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
@@ -164,7 +169,7 @@ For persistent bot settings:
 *[_id == "muodyBotSettings"][0]{defaultRandomReplyChance, randomReplies, gifResultLimit, gifContentFilter, timeZone, voiceJoinStartHour, voiceJoinEndHour, voiceStayMinMinutes, voiceStayMaxMinutes, voicePauseMinSeconds, voicePauseMaxSeconds, voiceNoiseDir, voiceRandomJoinEnabled, voiceMaxVisitsPerNight, voiceTestDelaySeconds, robloxSuggestionCount, channelSettings}
 ```
 
-After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.
+After publishing changes, run `/muody reset-cache`, restart the bot, or wait for the cache reset time shown by `/muody cache-status`.
 
 ## Join noises
 
