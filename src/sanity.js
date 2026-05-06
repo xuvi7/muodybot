@@ -2,6 +2,8 @@ import { config } from './config.js';
 
 const sanityCache = new Map();
 
+export const botSettingsDocumentId = 'muodyBotSettings';
+
 export async function getSanityTextReplies() {
   return fetchSanityList(
     'text replies',
@@ -30,9 +32,66 @@ export async function getSanityMessageTriggers() {
   );
 }
 
-async function fetchSanityList(label, query) {
+export async function getSanityBotSettings() {
+  return fetchSanityValue(
+    'bot settings',
+    `*[_id == "${botSettingsDocumentId}"][0]{defaultRandomReplyChance, randomReplies, gifResultLimit, gifContentFilter, timeZone, voiceJoinStartHour, voiceJoinEndHour, voiceStayMinMinutes, voiceStayMaxMinutes, voicePauseMinSeconds, voicePauseMaxSeconds, voiceNoiseDir, voiceRandomJoinEnabled, voiceMaxVisitsPerNight, voiceTestDelaySeconds, robloxSuggestionCount, channelSettings[]{_key, channelId, channelName, randomRepliesEnabled, messageTriggersEnabled, randomReplyChance}}`,
+    null,
+  );
+}
+
+export async function updateSanityBotSettings(fields) {
   if (!config.sanityProjectId || !config.sanityDataset) {
-    return [];
+    throw new Error('Sanity is not configured. Set SANITY_PROJECT_ID and SANITY_DATASET.');
+  }
+
+  if (!config.sanityToken) {
+    throw new Error('SANITY_TOKEN is required to write persistent settings.');
+  }
+
+  const response = await fetch(getSanityMutateEndpoint(), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${config.sanityToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      mutations: [
+        {
+          createIfNotExists: {
+            _id: botSettingsDocumentId,
+            _type: 'muodyBotSettings',
+            title: 'Muody Bot Settings',
+          },
+        },
+        {
+          patch: {
+            id: botSettingsDocumentId,
+            set: fields,
+          },
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(
+      `Sanity settings write failed with HTTP ${response.status}${body ? `: ${body}` : ''}`,
+    );
+  }
+
+  sanityCache.clear();
+}
+
+async function fetchSanityList(label, query) {
+  return fetchSanityValue(label, query, []);
+}
+
+async function fetchSanityValue(label, query, fallback) {
+  if (!config.sanityProjectId || !config.sanityDataset) {
+    return fallback;
   }
 
   const cached = sanityCache.get(query);
@@ -56,7 +115,7 @@ async function fetchSanityList(label, query) {
     }
 
     const payload = await response.json();
-    const value = Array.isArray(payload.result) ? payload.result : [];
+    const value = payload.result ?? fallback;
     sanityCache.set(query, {
       value,
       expiresAt: Date.now() + Math.max(0, config.sanityCacheSeconds) * 1000,
@@ -64,11 +123,15 @@ async function fetchSanityList(label, query) {
     return value;
   } catch (error) {
     console.error(`Failed to fetch Sanity ${label}:`, error);
-    return cached?.value || [];
+    return cached?.value ?? fallback;
   }
 }
 
 function getSanityQueryEndpoint() {
   const host = config.sanityUseCdn && !config.sanityToken ? 'apicdn.sanity.io' : 'api.sanity.io';
   return `https://${config.sanityProjectId}.${host}/v${config.sanityApiVersion}/data/query/${config.sanityDataset}`;
+}
+
+function getSanityMutateEndpoint() {
+  return `https://${config.sanityProjectId}.api.sanity.io/v${config.sanityApiVersion}/data/mutate/${config.sanityDataset}`;
 }

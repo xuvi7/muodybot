@@ -9,10 +9,11 @@ A Discord bot that:
 - joins your current voice channel and plays a selected voice noise with `/playnoise`
 - exposes privileged controls for an allowlisted set of Discord users
 - responds to Sanity-managed message triggers, including Roblox game suggestions
+- stores persistent bot settings and per-channel controls in Sanity CMS
 
 ## Setup
 
-1. Install Node.js 18 or newer.
+1. Install Node.js 22.12 or newer.
 2. Install dependencies:
 
    ```bash
@@ -40,7 +41,7 @@ If `GUILD_ID` is set in `.env`, slash commands register to that server when the 
 
 ## Commands
 
-- `/reply`: sends a random Sanity text reply or muody media item immediately, without waiting for `RANDOM_REPLY_CHANCE`.
+- `/reply`: sends a random Sanity text reply or muody media item immediately, without waiting for the configured random reply chance.
 - `/join`: tests joining your current voice channel and playing voice noises.
 - `/playnoise clip:<name>`: joins your current voice channel, plays the selected Sanity or local voice noise once, then leaves. The `clip` option autocompletes from available voice noise titles and filenames.
 
@@ -56,46 +57,47 @@ These slash commands are registered for everyone but only users in that allowlis
 
 - `/muody say channel:<channel> message:<message>`: sends a specific message as the bot.
 - `/muody reply-to target:<message-id-or-link> message:<message> [channel:<channel>]`: replies to a specific message as the bot. A full Discord message link includes the channel; use `channel` when `target` is only a message ID from another channel.
-- `/muody set-reply-chance chance:<0-1>`: changes the random chat reply frequency until the bot restarts. For example, `0.08` means 8%.
-- `/muody schedule-join channel:<voice-channel> when:<time> [clip:<name>]`: schedules one voice join. `when` accepts ISO timestamps, `YYYY-MM-DD HH:mm`, `today HH:mm`, `tomorrow HH:mm`, or relative values like `+10m` and `+1h`. Local times use `TIME_ZONE`.
+- `/muody set-reply-chance chance:<0-1>`: persistently changes the default random chat reply frequency in Sanity. For example, `0.08` means 8%.
+- `/muody channel-settings [channel:<channel>]`: shows the effective random reply and trigger settings for a text channel or thread.
+- `/muody set-channel-random channel:<channel> enabled:<true|false>`: enables or disables random chat replies in one channel.
+- `/muody set-channel-triggers channel:<channel> enabled:<true|false>`: enables or disables Sanity message triggers in one channel.
+- `/muody set-channel-chance channel:<channel> chance:<0-1>`: sets one channel's random chat reply frequency.
+- `/muody clear-channel-settings channel:<channel>`: removes one channel's persistent overrides so it uses the default settings again.
+- `/muody schedule-join channel:<voice-channel> when:<time> [clip:<name>]`: schedules one voice join. `when` accepts ISO timestamps, `YYYY-MM-DD HH:mm`, `today HH:mm`, `tomorrow HH:mm`, or relative values like `+10m` and `+1h`. Local times use the time zone from Bot Settings.
 
 ## Sanity CMS assets
 
 This repo includes a Sanity Studio in `sanity/muody`. Use that Studio to add or edit the bot's CMS content.
 
-Set these in `.env` to read bot assets from Sanity:
+Set this in `.env` to read bot assets and persistent settings from Sanity:
 
 ```text
 SANITY_PROJECT_ID=me88yh3c
-SANITY_DATASET=production
-SANITY_API_VERSION=2025-01-01
-SANITY_USE_CDN=true
 ```
 
-If your dataset is private, also set:
+If your dataset is private or you want the bot to initialize and edit persistent settings, also set:
 
 ```text
-SANITY_TOKEN=your-read-token
+SANITY_TOKEN=your-read-or-write-token
 ```
 
-The bot uses `SANITY_TOKEN` for private files too. Without it, text and image queries may still work in some setups, but private audio, video, and GIF files can fail when Discord or ffmpeg tries to read the protected file URL.
+The bot uses `SANITY_TOKEN` for private files too. Without it, text and image queries may still work in some setups, but private audio, video, and GIF files can fail when Discord or ffmpeg tries to read the protected file URL. Persistent settings writes require a token with Sanity write access.
 
-The bot queries four document types:
+The bot queries five document types:
 
 - `muodyTextReply`: text responses for random chat replies
 - `muody`: image, GIF, or video responses, called muodies
 - `muodyVoiceNoise`: audio files for voice joins
 - `muodyMessageTrigger`: custom message triggers and their response actions
+- `muodyBotSettings`: persistent default and per-channel bot settings
 
-The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using `RANDOM_REPLIES`, local files in `assets/noises`, and a built-in Roblox trigger fallback.
+The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using built-in settings defaults, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
-Random GIF trigger responses use Klipy. Set this in `.env`:
+Random GIF trigger responses use Klipy. Set the API key and client key in `.env`; the result limit and content filter live in **Bot Settings**:
 
 ```text
 KLIPY_API_KEY=your-klipy-api-key
 KLIPY_CLIENT_KEY=muodybot
-GIF_RESULT_LIMIT=25
-GIF_CONTENT_FILTER=off
 ```
 
 ### Editing Sanity content
@@ -115,6 +117,7 @@ In Studio, create or edit these documents:
 - **Muody**: upload an `image` or a video/GIF `file`, keep `enabled` on, and publish. The bot posts only the media, without the title or alt text.
 - **Voice Noise**: upload an audio `file`, keep `enabled` on, and publish.
 - **Message Trigger**: add one or more `patterns`, choose a `matchType`, add one or more `Responses`, keep `enabled` on, and publish.
+- **Bot Settings**: usually managed by `/muody` privileged commands. You can also edit the default random reply chance, fallback replies, GIF options, voice behavior, Roblox suggestion count, and channel settings directly in Studio.
 
 Use `priority` to decide which trigger wins when multiple triggers match the same message. Higher numbers win. If multiple matching triggers have the same highest priority, `weight` controls which one is picked. For example, an item with `weight` set to `3` is three times as likely as an item with `weight` set to `1`.
 
@@ -153,6 +156,12 @@ For message triggers:
 *[_type == "muodyMessageTrigger" && enabled != false && defined(patterns[0])]{title, patterns, matchType, responseActions[]{type, text, title, altText, weight, gifPrompt, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, responseType, responseTexts, responseMedia[]{title, altText, weight, "url": coalesce(image.asset->url, file.asset->url), "mimeType": coalesce(image.asset->mimeType, file.asset->mimeType)}, gifPrompt, priority, weight}
 ```
 
+For persistent bot settings:
+
+```groq
+*[_id == "muodyBotSettings"][0]{defaultRandomReplyChance, randomReplies, gifResultLimit, gifContentFilter, timeZone, voiceJoinStartHour, voiceJoinEndHour, voiceStayMinMinutes, voiceStayMaxMinutes, voicePauseMinSeconds, voicePauseMaxSeconds, voiceNoiseDir, voiceRandomJoinEnabled, voiceMaxVisitsPerNight, voiceTestDelaySeconds, robloxSuggestionCount, channelSettings}
+```
+
 After publishing changes, restart the bot or wait up to `SANITY_CACHE_SECONDS` for the bot cache to refresh.
 
 ## Join noises
@@ -161,21 +170,4 @@ Sanity `muodyVoiceNoise` documents are preferred. For local fallback, put sound 
 
 Supported extensions are `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.webm`.
 
-For fast voice testing, set this in `.env` and restart the bot:
-
-```text
-VOICE_TEST_DELAY_SECONDS=10
-```
-
-Set it back to `0` when you want normal 11 PM to 3 AM scheduling.
-
-Voice visits choose a random stay length and random pauses between clips. Set these in `.env` to tune the behavior:
-
-```text
-VOICE_STAY_MIN_MINUTES=1
-VOICE_STAY_MAX_MINUTES=5
-VOICE_PAUSE_MIN_SECONDS=8
-VOICE_PAUSE_MAX_SECONDS=45
-```
-
-`VOICE_STAY_MINUTES` is still supported as a fixed-length fallback when the min/max values are not set.
+Voice visits choose a random stay length and random pauses between clips. Tune the voice window, visit length, pause length, maximum visits, local noise directory, and test delay in the Sanity **Bot Settings** document.

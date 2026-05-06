@@ -20,6 +20,7 @@ import prism from 'prism-media';
 
 import { config } from './config.js';
 import { getSanityVoiceNoises } from './sanity.js';
+import { getCurrentBotSettings } from './settings.js';
 import {
   addDays,
   formatDuration,
@@ -38,8 +39,9 @@ const voiceJoinLocks = new Set();
 const voiceVisitsByNight = new Map();
 
 export function scheduleNextVoiceVisit(client) {
-  const delay = config.voiceTestDelaySeconds > 0
-    ? config.voiceTestDelaySeconds * 1000
+  const settings = getCurrentBotSettings();
+  const delay = settings.voiceTestDelaySeconds > 0
+    ? settings.voiceTestDelaySeconds * 1000
     : getDelayUntilNextVoiceVisit();
   const visitAt = new Date(Date.now() + delay);
 
@@ -211,7 +213,8 @@ function logVoiceConnection(connection) {
 }
 
 async function playJoinNoiseSession(connection) {
-  const stayMs = getRandomMilliseconds(config.voiceStayMinMinutes, config.voiceStayMaxMinutes, 60_000);
+  const settings = getCurrentBotSettings();
+  const stayMs = getRandomMilliseconds(settings.voiceStayMinMinutes, settings.voiceStayMaxMinutes, 60_000);
   const leaveAt = Date.now() + stayMs;
   let clipsPlayed = 0;
   const abortController = new AbortController();
@@ -265,7 +268,7 @@ async function playJoinNoiseSession(connection) {
       const noiseFile = await pickRandomNoise();
 
       if (!noiseFile) {
-        console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+        console.log(`No join noises found in ${settings.voiceNoiseDir}.`);
         break;
       }
 
@@ -283,7 +286,7 @@ async function playJoinNoiseSession(connection) {
       }
 
       const pauseMs = Math.min(
-        getRandomMilliseconds(config.voicePauseMinSeconds, config.voicePauseMaxSeconds, 1000),
+        getRandomMilliseconds(settings.voicePauseMinSeconds, settings.voicePauseMaxSeconds, 1000),
         remainingMs,
       );
       console.log(`Waiting ${formatDuration(pauseMs)} before next join noise.`);
@@ -337,7 +340,7 @@ async function playSingleNoiseSession(connection, noiseFile) {
 
 async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
   if (!noiseFile) {
-    console.log(`No join noises found in ${config.voiceNoiseDir}.`);
+    console.log(`No join noises found in ${getCurrentBotSettings().voiceNoiseDir}.`);
     return;
   }
 
@@ -552,7 +555,7 @@ async function pickRandomNoiseFile() {
 }
 
 async function getLocalNoiseFiles() {
-  const noiseDir = path.resolve(config.voiceNoiseDir);
+  const noiseDir = path.resolve(getCurrentBotSettings().voiceNoiseDir);
   const supportedExtensions = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.webm']);
 
   try {
@@ -573,29 +576,30 @@ async function getLocalNoiseFiles() {
 
 function getDelayUntilNextVoiceVisit() {
   const now = new Date();
-  const crossesMidnight = config.voiceJoinEndHour <= config.voiceJoinStartHour;
-  const nowParts = getZonedParts(now, config.timeZone, true);
+  const settings = getCurrentBotSettings();
+  const crossesMidnight = settings.voiceJoinEndHour <= settings.voiceJoinStartHour;
+  const nowParts = getZonedParts(now, settings.timeZone, true);
   let startParts = nowParts;
   let endParts = nowParts;
 
   if (crossesMidnight) {
-    if (nowParts.hour < config.voiceJoinEndHour) {
-      startParts = getZonedParts(addDays(now, -1), config.timeZone);
+    if (nowParts.hour < settings.voiceJoinEndHour) {
+      startParts = getZonedParts(addDays(now, -1), settings.timeZone);
       endParts = nowParts;
     } else {
-      endParts = getZonedParts(addDays(now, 1), config.timeZone);
+      endParts = getZonedParts(addDays(now, 1), settings.timeZone);
     }
   }
 
-  let start = zonedDateToUtc(startParts, config.voiceJoinStartHour, 0, config.timeZone);
-  let end = zonedDateToUtc(endParts, config.voiceJoinEndHour, 0, config.timeZone);
+  let start = zonedDateToUtc(startParts, settings.voiceJoinStartHour, 0, settings.timeZone);
+  let end = zonedDateToUtc(endParts, settings.voiceJoinEndHour, 0, settings.timeZone);
 
   if (now >= end) {
-    const tomorrowParts = getZonedParts(addDays(now, 1), config.timeZone);
-    start = zonedDateToUtc(tomorrowParts, config.voiceJoinStartHour, 0, config.timeZone);
-    end = zonedDateToUtc(tomorrowParts, config.voiceJoinEndHour, 0, config.timeZone);
+    const tomorrowParts = getZonedParts(addDays(now, 1), settings.timeZone);
+    start = zonedDateToUtc(tomorrowParts, settings.voiceJoinStartHour, 0, settings.timeZone);
+    end = zonedDateToUtc(tomorrowParts, settings.voiceJoinEndHour, 0, settings.timeZone);
 
-    if (config.voiceJoinEndHour <= config.voiceJoinStartHour) {
+    if (settings.voiceJoinEndHour <= settings.voiceJoinStartHour) {
       end = addDays(end, 1);
     }
   }
@@ -606,14 +610,15 @@ function getDelayUntilNextVoiceVisit() {
 }
 
 function canVisitVoiceTonight() {
-  return getVoiceVisitsForTonight() < config.voiceMaxVisitsPerNight;
+  return getVoiceVisitsForTonight() < getCurrentBotSettings().voiceMaxVisitsPerNight;
 }
 
 function recordVoiceVisit() {
   const nightKey = getVoiceNightKey();
   const visits = getVoiceVisitsForTonight() + 1;
+  const { voiceMaxVisitsPerNight } = getCurrentBotSettings();
   voiceVisitsByNight.set(nightKey, visits);
-  console.log(`Recorded voice visit ${visits}/${config.voiceMaxVisitsPerNight} for ${nightKey}.`);
+  console.log(`Recorded voice visit ${visits}/${voiceMaxVisitsPerNight} for ${nightKey}.`);
 }
 
 function getVoiceVisitsForTonight() {
@@ -621,13 +626,14 @@ function getVoiceVisitsForTonight() {
 }
 
 function getVoiceNightKey(date = new Date()) {
-  const parts = getZonedParts(date, config.timeZone, true);
+  const settings = getCurrentBotSettings();
+  const parts = getZonedParts(date, settings.timeZone, true);
 
   if (
-    config.voiceJoinEndHour <= config.voiceJoinStartHour &&
-    parts.hour < config.voiceJoinEndHour
+    settings.voiceJoinEndHour <= settings.voiceJoinStartHour &&
+    parts.hour < settings.voiceJoinEndHour
   ) {
-    const previousDayParts = getZonedParts(addDays(date, -1), config.timeZone);
+    const previousDayParts = getZonedParts(addDays(date, -1), settings.timeZone);
     return `${previousDayParts.year}-${pad2(previousDayParts.month)}-${pad2(previousDayParts.day)}`;
   }
 

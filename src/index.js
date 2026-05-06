@@ -19,6 +19,17 @@ import {
   scheduleVoiceVisitAt,
 } from './voice.js';
 import { pickMessageTriggerResponse } from './triggers.js';
+import {
+  clearChannelSettings,
+  getBotSettings,
+  getCurrentBotSettings,
+  getEffectiveChannelSettings,
+  initializeBotSettings,
+  setChannelMessageTriggers,
+  setChannelRandomReplies,
+  setChannelRandomReplyChance,
+  setDefaultRandomReplyChance,
+} from './settings.js';
 
 const client = new Client({
   intents: [
@@ -33,13 +44,23 @@ client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(generateDependencyReport());
   await registerCommands(client);
+  await initializePersistentSettings();
 
-  if (config.voiceRandomJoinEnabled) {
+  if (getCurrentBotSettings().voiceRandomJoinEnabled) {
     scheduleNextVoiceVisit(client);
   } else {
     console.log('Random scheduled voice joins are disabled.');
   }
 });
+
+async function initializePersistentSettings() {
+  try {
+    await initializeBotSettings();
+    console.log('Initialized persistent Muody settings.');
+  } catch (error) {
+    console.warn(`Persistent Muody settings were not initialized: ${error.message}`);
+  }
+}
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild || !message.channel.isTextBased()) {
@@ -48,13 +69,17 @@ client.on('messageCreate', async (message) => {
 
   console.log(`Saw message from ${message.author.tag} in #${message.channel.name}.`);
 
-  const triggerResponse = await pickMessageTriggerResponse(message.content);
-  if (triggerResponse) {
-    await sendChatReply(message, triggerResponse);
-    return;
+  const channelSettings = await getEffectiveChannelSettings(message.channel.id);
+
+  if (channelSettings.messageTriggersEnabled) {
+    const triggerResponse = await pickMessageTriggerResponse(message.content);
+    if (triggerResponse) {
+      await sendChatReply(message, triggerResponse);
+      return;
+    }
   }
 
-  if (Math.random() < config.randomReplyChance) {
+  if (channelSettings.randomRepliesEnabled && Math.random() < channelSettings.randomReplyChance) {
     await sendChatReply(message, await pickRandomChatResponse());
   }
 });
@@ -160,6 +185,31 @@ async function handlePrivilegedMuodyCommand(interaction) {
     return;
   }
 
+  if (subcommand === 'channel-settings') {
+    await handlePrivilegedChannelSettingsCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'set-channel-random') {
+    await handlePrivilegedSetChannelRandomCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'set-channel-triggers') {
+    await handlePrivilegedSetChannelTriggersCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'set-channel-chance') {
+    await handlePrivilegedSetChannelChanceCommand(interaction);
+    return;
+  }
+
+  if (subcommand === 'clear-channel-settings') {
+    await handlePrivilegedClearChannelSettingsCommand(interaction);
+    return;
+  }
+
   if (subcommand === 'schedule-join') {
     await handlePrivilegedScheduleJoinCommand(interaction);
   }
@@ -208,12 +258,110 @@ async function handlePrivilegedReplyToCommand(interaction) {
 
 async function handlePrivilegedSetReplyChanceCommand(interaction) {
   const chance = interaction.options.getNumber('chance', true);
-  const previousChance = config.randomReplyChance;
+  const previousSettings = await getBotSettings();
 
-  config.randomReplyChance = chance;
+  if (!await tryUpdateSettings(interaction, () => setDefaultRandomReplyChance(chance))) {
+    return;
+  }
+
   await interaction.editReply(
-    `Random reply chance changed from ${formatPercent(previousChance)} to ${formatPercent(chance)} until restart.`,
+    `Default random reply chance changed from ${formatPercent(previousSettings.defaultRandomReplyChance)} to ${formatPercent(chance)} in Sanity.`,
   );
+}
+
+async function handlePrivilegedChannelSettingsCommand(interaction) {
+  const channel = interaction.options.getChannel('channel') || interaction.channel;
+
+  if (!channel?.isTextBased()) {
+    await interaction.editReply('Choose a text channel or thread.');
+    return;
+  }
+
+  const settings = await getEffectiveChannelSettings(channel.id);
+  await interaction.editReply(
+    [
+      `Settings for ${channel}:`,
+      `Random replies: ${formatEnabled(settings.randomRepliesEnabled)}`,
+      `Message triggers: ${formatEnabled(settings.messageTriggersEnabled)}`,
+      `Random reply chance: ${formatPercent(settings.randomReplyChance)}`,
+    ].join('\n'),
+  );
+}
+
+async function handlePrivilegedSetChannelRandomCommand(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  const enabled = interaction.options.getBoolean('enabled', true);
+
+  if (!channel.isTextBased()) {
+    await interaction.editReply('Choose a text channel or thread.');
+    return;
+  }
+
+  if (!await tryUpdateSettings(interaction, () => setChannelRandomReplies(channel, enabled))) {
+    return;
+  }
+
+  await interaction.editReply(`Random replies are now ${formatEnabled(enabled)} in ${channel}.`);
+}
+
+async function handlePrivilegedSetChannelTriggersCommand(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  const enabled = interaction.options.getBoolean('enabled', true);
+
+  if (!channel.isTextBased()) {
+    await interaction.editReply('Choose a text channel or thread.');
+    return;
+  }
+
+  if (!await tryUpdateSettings(interaction, () => setChannelMessageTriggers(channel, enabled))) {
+    return;
+  }
+
+  await interaction.editReply(`Message triggers are now ${formatEnabled(enabled)} in ${channel}.`);
+}
+
+async function handlePrivilegedSetChannelChanceCommand(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+  const chance = interaction.options.getNumber('chance', true);
+
+  if (!channel.isTextBased()) {
+    await interaction.editReply('Choose a text channel or thread.');
+    return;
+  }
+
+  if (!await tryUpdateSettings(interaction, () => setChannelRandomReplyChance(channel, chance))) {
+    return;
+  }
+
+  await interaction.editReply(`Random reply chance for ${channel} is now ${formatPercent(chance)}.`);
+}
+
+async function handlePrivilegedClearChannelSettingsCommand(interaction) {
+  const channel = interaction.options.getChannel('channel', true);
+
+  if (!channel.isTextBased()) {
+    await interaction.editReply('Choose a text channel or thread.');
+    return;
+  }
+
+  if (!await tryUpdateSettings(interaction, () => clearChannelSettings(channel.id))) {
+    return;
+  }
+
+  await interaction.editReply(`Cleared persistent Muody overrides for ${channel}.`);
+}
+
+async function tryUpdateSettings(interaction, update) {
+  try {
+    await update();
+    return true;
+  } catch (error) {
+    console.error('Failed to update persistent Muody settings:', error);
+    await interaction.editReply(
+      `I could not update persistent settings: ${error.message}`,
+    );
+    return false;
+  }
 }
 
 async function handlePrivilegedScheduleJoinCommand(interaction) {
@@ -316,6 +464,10 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(2).replace(/\.?0+$/, '')}%`;
 }
 
+function formatEnabled(value) {
+  return value ? 'enabled' : 'disabled';
+}
+
 function parseScheduledTime(value) {
   const input = value.trim();
   const relativeMatch = input.match(/^\+(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/i);
@@ -347,7 +499,8 @@ function parseAbsoluteScheduledTime(input) {
       return null;
     }
 
-    const nowParts = getZonedDateParts(new Date(), config.timeZone);
+    const { timeZone } = getCurrentBotSettings();
+    const nowParts = getZonedDateParts(new Date(), timeZone);
     let parts = {
       year: Number(year || nowParts.year),
       month: Number(month || nowParts.month),
@@ -355,10 +508,10 @@ function parseAbsoluteScheduledTime(input) {
     };
 
     if (dayWord?.toLowerCase() === 'tomorrow') {
-      parts = getZonedDateParts(new Date(Date.now() + 24 * 60 * 60 * 1000), config.timeZone);
+      parts = getZonedDateParts(new Date(Date.now() + 24 * 60 * 60 * 1000), timeZone);
     }
 
-    return zonedDateToUtc(parts, numericHour, numericMinute, config.timeZone);
+    return zonedDateToUtc(parts, numericHour, numericMinute, timeZone);
   }
 
   const nativeDate = new Date(input);
@@ -412,8 +565,9 @@ function getTimeZoneOffsetMs(date, timeZone) {
 }
 
 function formatScheduledTime(date) {
+  const { timeZone } = getCurrentBotSettings();
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: config.timeZone,
+    timeZone,
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);

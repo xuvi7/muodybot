@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { getCurrentBotSettings } from './settings.js';
 import { pick } from './utils.js';
 
 const KLIPY_SEARCH_URL = 'https://api.klipy.com/v2/search';
@@ -11,13 +12,14 @@ export async function getRandomGif(prompt) {
   }
 
   try {
+    const settings = getCurrentBotSettings();
     const url = new URL(KLIPY_SEARCH_URL);
     url.searchParams.set('q', query);
     url.searchParams.set('key', config.klipyApiKey);
     url.searchParams.set('client_key', config.klipyClientKey);
-    url.searchParams.set('limit', String(clampResultLimit(config.gifResultLimit)));
+    url.searchParams.set('limit', String(settings.gifResultLimit));
     url.searchParams.set('media_filter', 'gif,tinygif');
-    url.searchParams.set('contentfilter', config.gifContentFilter);
+    url.searchParams.set('contentfilter', settings.gifContentFilter);
 
     const response = await fetch(url, {
       headers: {
@@ -40,14 +42,4 @@ export async function getRandomGif(prompt) {
     console.error(`Failed to fetch random GIF for "${query}":`, error);
     return null;
   }
-}
-
-function clampResultLimit(value) {
-  const limit = Number(value);
-
-  if (!Number.isFinite(limit)) {
-    return 25;
-  }
-
-  return Math.min(50, Math.max(1, Math.round(limit)));
 }

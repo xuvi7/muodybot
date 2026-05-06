@@ -1,8 +1,8 @@
 import { formatRobloxSuggestion, getRobloxSuggestions } from './roblox.js';
-import { config } from './config.js';
 import { pickRandomChatResponse, pickRandomMuody, pickRandomTextReply } from './chat.js';
 import { getRandomGif } from './gifs.js';
 import { getSanityMessageTriggers } from './sanity.js';
+import { getCurrentBotSettings } from './settings.js';
 import { pick, weightedPick } from './utils.js';
 
 const fallbackMessageTriggers = [
@@ -39,7 +39,7 @@ async function getTriggerResponse(trigger) {
 
 async function getActionResponse(action) {
   if (action.type === 'robloxSuggestion') {
-    const suggestions = await getRobloxSuggestions(config.robloxSuggestionCount);
+    const suggestions = await getRobloxSuggestions(getCurrentBotSettings().robloxSuggestionCount);
     return formatRobloxSuggestion(pick(suggestions));
   }
 

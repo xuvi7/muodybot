@@ -2,6 +2,14 @@ import { ChannelType, REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 import { config, token } from './config.js';
 
+const textChannelTypes = [
+  ChannelType.GuildText,
+  ChannelType.GuildAnnouncement,
+  ChannelType.PublicThread,
+  ChannelType.PrivateThread,
+  ChannelType.AnnouncementThread,
+];
+
 export const commands = [
   new SlashCommandBuilder()
     .setName('join')
@@ -83,13 +91,92 @@ export const commands = [
     .addSubcommand((subcommand) =>
       subcommand
         .setName('set-reply-chance')
-        .setDescription('Change the random chat reply frequency until the bot restarts')
+        .setDescription('Persistently change the default random chat reply frequency')
         .addNumberOption((option) =>
           option
             .setName('chance')
             .setDescription('Chance from 0 to 1, e.g. 0.08 for 8%')
             .setMinValue(0)
             .setMaxValue(1)
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('channel-settings')
+        .setDescription('Show persistent Muody settings for a channel')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('The text channel or thread to inspect')
+            .addChannelTypes(...textChannelTypes),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('set-channel-random')
+        .setDescription('Enable or disable random chat replies in one channel')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('The text channel or thread to update')
+            .addChannelTypes(...textChannelTypes)
+            .setRequired(true),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('Whether random chat replies should run in this channel')
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('set-channel-triggers')
+        .setDescription('Enable or disable message triggers in one channel')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('The text channel or thread to update')
+            .addChannelTypes(...textChannelTypes)
+            .setRequired(true),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('Whether message triggers should run in this channel')
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('set-channel-chance')
+        .setDescription('Set the random chat reply chance for one channel')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('The text channel or thread to update')
+            .addChannelTypes(...textChannelTypes)
+            .setRequired(true),
+        )
+        .addNumberOption((option) =>
+          option
+            .setName('chance')
+            .setDescription('Chance from 0 to 1, e.g. 0.08 for 8%')
+            .setMinValue(0)
+            .setMaxValue(1)
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('clear-channel-settings')
+        .setDescription('Remove persistent Muody overrides for one channel')
+        .addChannelOption((option) =>
+          option
+            .setName('channel')
+            .setDescription('The text channel or thread to reset')
+            .addChannelTypes(...textChannelTypes)
             .setRequired(true),
         ),
     )

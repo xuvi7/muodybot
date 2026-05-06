@@ -1,5 +1,5 @@
-import { config } from './config.js';
 import { getSanityMuodies, getSanityTextReplies } from './sanity.js';
+import { getCurrentBotSettings } from './settings.js';
 import { pick, weightedPick } from './utils.js';
 
 export async function sendChatReply(message, response) {
@@ -40,7 +40,7 @@ export function formatDiscordReply(response) {
     };
   }
 
-  return pick(config.randomReplies);
+  return pick(getCurrentBotSettings().randomReplies);
 }
 
 export async function pickRandomChatResponse() {
@@ -54,7 +54,7 @@ export async function pickRandomChatResponse() {
   ];
 
   if (responses.length === 0) {
-    return pick(config.randomReplies);
+    return pick(getCurrentBotSettings().randomReplies);
   }
 
   const response = weightedPick(responses);
@@ -65,7 +65,7 @@ export async function pickRandomTextReply() {
   const textReplies = await getSanityTextReplies();
 
   if (textReplies.length === 0) {
-    return pick(config.randomReplies);
+    return pick(getCurrentBotSettings().randomReplies);
   }
 
   return weightedPick(textReplies).text;
