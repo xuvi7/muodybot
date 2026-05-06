@@ -182,6 +182,18 @@ export const commands = [
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName('stats')
+        .setDescription('Show Muody usage stats')
+        .addIntegerOption((option) =>
+          option
+            .setName('days')
+            .setDescription('Number of recent days to include')
+            .setMinValue(1)
+            .setMaxValue(365),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName('schedule-join')
         .setDescription('Schedule Muody to join a specific voice channel once')
         .addChannelOption((option) =>

@@ -21,6 +21,7 @@ import prism from 'prism-media';
 import { config } from './config.js';
 import { getSanityVoiceNoises } from './sanity.js';
 import { getCurrentBotSettings } from './settings.js';
+import { getVoiceContext, recordUsageEvent } from './stats.js';
 import {
   addDays,
   formatDuration,
@@ -84,7 +85,7 @@ export async function joinVoiceChannelAndPlayNoise(channel) {
 export async function joinVoiceChannelAndPlaySpecificNoise(channel, noiseFile) {
   return joinVoiceChannelForSession(
     channel,
-    (connection) => playSingleNoiseSession(connection, noiseFile),
+    (connection, joinedChannel) => playSingleNoiseSession(connection, noiseFile, joinedChannel),
     `voice noise ${noiseFile.name}`,
   );
 }
@@ -175,7 +176,7 @@ async function joinVoiceChannelForSession(channel, playSession, label) {
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 45_000);
     console.log(`Joined ${channel.name} in ${channel.guild.name}.`);
-    await playSession(connection);
+    await playSession(connection, channel);
     if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
       connection.destroy();
       console.log(`Left ${channel.name} in ${channel.guild.name} after ${label} ended.`);
@@ -212,7 +213,7 @@ function logVoiceConnection(connection) {
   });
 }
 
-async function playJoinNoiseSession(connection) {
+async function playJoinNoiseSession(connection, channel) {
   const settings = getCurrentBotSettings();
   const stayMs = getRandomMilliseconds(settings.voiceStayMinMinutes, settings.voiceStayMaxMinutes, 60_000);
   const leaveAt = Date.now() + stayMs;
@@ -272,7 +273,7 @@ async function playJoinNoiseSession(connection) {
         break;
       }
 
-      await playNoiseFile(player, noiseFile, leaveAt - Date.now(), signal);
+      await playNoiseFile(player, noiseFile, leaveAt - Date.now(), signal, channel);
 
       if (signal.aborted) {
         break;
@@ -305,7 +306,7 @@ async function playJoinNoiseSession(connection) {
   }
 }
 
-async function playSingleNoiseSession(connection, noiseFile) {
+async function playSingleNoiseSession(connection, noiseFile, channel) {
   const player = createAudioPlayer({
     behaviors: {
       noSubscriber: NoSubscriberBehavior.Stop,
@@ -331,14 +332,14 @@ async function playSingleNoiseSession(connection, noiseFile) {
   });
 
   try {
-    await playNoiseFile(player, noiseFile, null);
+    await playNoiseFile(player, noiseFile, null, null, channel);
   } finally {
     subscription.unsubscribe();
     player.stop();
   }
 }
 
-async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
+async function playNoiseFile(player, noiseFile, maxPlayMs, signal, channel = null) {
   if (!noiseFile) {
     console.log(`No join noises found in ${getCurrentBotSettings().voiceNoiseDir}.`);
     return;
@@ -398,6 +399,12 @@ async function playNoiseFile(player, noiseFile, maxPlayMs, signal) {
 
     player.play(resource);
     console.log(`Playing join noise: ${noiseFile.name}`);
+    recordUsageEvent({
+      eventType: 'noise_play',
+      ...(channel ? getVoiceContext(channel) : {}),
+      noiseName: noiseFile.name,
+      source: isHttpUrl(noiseFile.url) ? 'sanity' : 'local',
+    });
 
     await new Promise((resolve) => {
       let finished = false;

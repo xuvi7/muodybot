@@ -85,6 +85,49 @@ export async function updateSanityBotSettings(fields) {
   sanityCache.clear();
 }
 
+export async function createSanityUsageEvent(event) {
+  if (!config.sanityProjectId || !config.sanityDataset || !config.sanityToken) {
+    return false;
+  }
+
+  const response = await fetch(getSanityMutateEndpoint(), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${config.sanityToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      mutations: [
+        {
+          create: {
+            _type: 'muodyUsageEvent',
+            createdAt: new Date().toISOString(),
+            ...removeUndefinedValues(event),
+          },
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sanity usage event write failed with HTTP ${response.status}`);
+  }
+
+  return true;
+}
+
+export async function getSanityUsageEvents(days = 30, limit = 500) {
+  const since = new Date(Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000).toISOString();
+  const safeLimit = Math.min(1000, Math.max(1, Math.round(limit)));
+
+  return fetchSanityValue(
+    'usage events',
+    `*[_type == "muodyUsageEvent" && createdAt >= "${since}"] | order(createdAt desc)[0...${safeLimit}]{eventType, createdAt, guildId, guildName, channelId, channelName, userId, username, commandName, subcommandName, triggerTitle, responseType, noiseName, source}`,
+    [],
+  );
+}
+
 async function fetchSanityList(label, query) {
   return fetchSanityValue(label, query, []);
 }
@@ -134,4 +177,8 @@ function getSanityQueryEndpoint() {
 
 function getSanityMutateEndpoint() {
   return `https://${config.sanityProjectId}.api.sanity.io/v${config.sanityApiVersion}/data/mutate/${config.sanityDataset}`;
+}
+
+function removeUndefinedValues(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entryValue]) => entryValue !== undefined));
 }

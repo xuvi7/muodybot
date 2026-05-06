@@ -23,7 +23,16 @@ export async function pickMessageTriggerResponse(content) {
     return null;
   }
 
-  return getTriggerResponse(weightedPick(getHighestPriorityTriggers(matchingTriggers)));
+  const trigger = weightedPick(getHighestPriorityTriggers(matchingTriggers));
+  const response = await getTriggerResponse(trigger);
+
+  return response
+    ? {
+        response,
+        triggerTitle: trigger.title,
+        responseType: getResponseType(response),
+      }
+    : null;
 }
 
 async function getMessageTriggers() {
@@ -167,4 +176,12 @@ function patternMatchesContent(content, pattern, matchType = 'word') {
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getResponseType(response) {
+  if (typeof response === 'string') {
+    return 'text';
+  }
+
+  return response?.type || 'unknown';
 }

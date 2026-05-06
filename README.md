@@ -63,6 +63,7 @@ These slash commands are registered for everyone but only users in that allowlis
 - `/muody set-channel-triggers channel:<channel> enabled:<true|false>`: enables or disables Sanity message triggers in one channel.
 - `/muody set-channel-chance channel:<channel> chance:<0-1>`: sets one channel's random chat reply frequency.
 - `/muody clear-channel-settings channel:<channel>`: removes one channel's persistent overrides so it uses the default settings again.
+- `/muody stats [days:<1-365>]`: shows usage stats, including top triggers, top noises, reply targets, command users, and commands.
 - `/muody schedule-join channel:<voice-channel> when:<time> [clip:<name>]`: schedules one voice join. `when` accepts ISO timestamps, `YYYY-MM-DD HH:mm`, `today HH:mm`, `tomorrow HH:mm`, or relative values like `+10m` and `+1h`. Local times use the time zone from Bot Settings.
 
 ## Sanity CMS assets
@@ -81,15 +82,16 @@ If your dataset is private or you want the bot to initialize and edit persistent
 SANITY_TOKEN=your-read-or-write-token
 ```
 
-The bot uses `SANITY_TOKEN` for private files too. Without it, text and image queries may still work in some setups, but private audio, video, and GIF files can fail when Discord or ffmpeg tries to read the protected file URL. Persistent settings writes require a token with Sanity write access.
+The bot uses `SANITY_TOKEN` for private files too. Without it, text and image queries may still work in some setups, but private audio, video, and GIF files can fail when Discord or ffmpeg tries to read the protected file URL. Persistent settings writes and usage stats recording require a token with Sanity write access.
 
-The bot queries five document types:
+The bot queries six document types:
 
 - `muodyTextReply`: text responses for random chat replies
 - `muody`: image, GIF, or video responses, called muodies
 - `muodyVoiceNoise`: audio files for voice joins
 - `muodyMessageTrigger`: custom message triggers and their response actions
 - `muodyBotSettings`: persistent default and per-channel bot settings
+- `muodyUsageEvent`: usage stats events for replies, triggers, noises, and commands
 
 The optional `weight` field controls how often an item is picked relative to other enabled items. For message triggers, `priority` is checked first; `weight` is only used when more than one same-priority trigger matches the same message. If Sanity is not configured, empty, or temporarily unavailable, the bot keeps using built-in settings defaults, local files in `assets/noises`, and a built-in Roblox trigger fallback.
 
@@ -171,3 +173,6 @@ Sanity `muodyVoiceNoise` documents are preferred. For local fallback, put sound 
 Supported extensions are `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.webm`.
 
 Voice visits choose a random stay length and random pauses between clips. Tune the voice window, visit length, pause length, maximum visits, local noise directory, and test delay in the Sanity **Bot Settings** document.
+
+## TODO
+- implement Discord mentions

@@ -30,6 +30,13 @@ import {
   setChannelRandomReplyChance,
   setDefaultRandomReplyChance,
 } from './settings.js';
+import {
+  formatUsageStats,
+  getInteractionContext,
+  getMessageContext,
+  getUsageStats,
+  recordUsageEvent,
+} from './stats.js';
 
 const client = new Client({
   intents: [
@@ -72,15 +79,25 @@ client.on('messageCreate', async (message) => {
   const channelSettings = await getEffectiveChannelSettings(message.channel.id);
 
   if (channelSettings.messageTriggersEnabled) {
-    const triggerResponse = await pickMessageTriggerResponse(message.content);
-    if (triggerResponse) {
-      await sendChatReply(message, triggerResponse);
+    const triggerResult = await pickMessageTriggerResponse(message.content);
+    if (triggerResult) {
+      await sendChatReply(message, triggerResult.response);
+      recordUsageEvent({
+        eventType: 'trigger_reply',
+        ...getMessageContext(message),
+        triggerTitle: triggerResult.triggerTitle,
+        responseType: triggerResult.responseType,
+      });
       return;
     }
   }
 
   if (channelSettings.randomRepliesEnabled && Math.random() < channelSettings.randomReplyChance) {
     await sendChatReply(message, await pickRandomChatResponse());
+    recordUsageEvent({
+      eventType: 'random_reply',
+      ...getMessageContext(message),
+    });
   }
 });
 
@@ -102,6 +119,11 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
+  recordUsageEvent({
+    eventType: 'command',
+    ...getInteractionContext(interaction),
+  });
+
   if (interaction.commandName === 'join') {
     await handleJoinCommand(interaction);
     return;
@@ -114,6 +136,10 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.commandName === 'reply') {
     await interaction.reply(formatDiscordReply(await pickRandomChatResponse()));
+    recordUsageEvent({
+      eventType: 'manual_reply',
+      ...getInteractionContext(interaction),
+    });
     return;
   }
 
@@ -210,9 +236,20 @@ async function handlePrivilegedMuodyCommand(interaction) {
     return;
   }
 
+  if (subcommand === 'stats') {
+    await handlePrivilegedStatsCommand(interaction);
+    return;
+  }
+
   if (subcommand === 'schedule-join') {
     await handlePrivilegedScheduleJoinCommand(interaction);
   }
+}
+
+async function handlePrivilegedStatsCommand(interaction) {
+  const days = interaction.options.getInteger('days') || 30;
+  const stats = await getUsageStats(days);
+  await interaction.editReply(formatUsageStats(stats, days));
 }
 
 async function handlePrivilegedSayCommand(interaction) {
@@ -253,6 +290,17 @@ async function handlePrivilegedReplyToCommand(interaction) {
   }
 
   await targetMessage.reply(message);
+  recordUsageEvent({
+    eventType: 'manual_reply',
+    guildId: targetMessage.guild?.id,
+    guildName: targetMessage.guild?.name,
+    channelId: targetMessage.channel?.id,
+    channelName: targetMessage.channel?.name,
+    userId: targetMessage.author?.id,
+    username: targetMessage.author?.tag || targetMessage.author?.username,
+    commandName: interaction.commandName,
+    subcommandName: interaction.options.getSubcommand(),
+  });
   await interaction.editReply(`Replied to ${targetMessage.url}.`);
 }
 
