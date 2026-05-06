@@ -56,13 +56,18 @@ export async function flushUsageEvents() {
 }
 
 export async function flushAllUsageEvents() {
+  let flushedAll = true;
+
   while (usageEventQueue.length > 0) {
     const flushed = await flushUsageEvents();
 
     if (!flushed || flushInProgress) {
+      flushedAll = false;
       break;
     }
   }
+
+  return flushedAll;
 }
 
 export function getUsageFlushStatus() {
@@ -109,10 +114,14 @@ export function getVoiceContext(channel) {
 }
 
 export async function getUsageStats(days = 30) {
-  const events = await getSanityUsageEvents(days);
+  const queuedEvents = getQueuedUsageEvents(days);
+  const persistedEvents = await getSanityUsageEvents(days);
+  const events = [...persistedEvents, ...queuedEvents];
 
   return {
     totalEvents: events.length,
+    persistedEvents: persistedEvents.length,
+    queuedEvents: queuedEvents.length,
     topTriggers: countTop(events, 'triggerTitle', (event) => event.eventType === 'trigger_reply'),
     topNoises: countTop(events, 'noiseName', (event) => event.eventType === 'noise_play'),
     topReplyTargets: countTop(
@@ -136,7 +145,7 @@ export async function getUsageStats(days = 30) {
 export function formatUsageStats(stats, days = 30) {
   return [
     `Usage stats for the last ${days} day(s):`,
-    `Events recorded: ${stats.totalEvents}`,
+    `Events counted: ${stats.totalEvents} (${stats.persistedEvents} persisted, ${stats.queuedEvents} queued)`,
     '',
     formatTopList('Top triggers', stats.topTriggers),
     formatTopList('Top noises', stats.topNoises),
@@ -144,6 +153,15 @@ export function formatUsageStats(stats, days = 30) {
     formatTopList('Command users', stats.topCommandUsers),
     formatTopList('Commands', stats.topCommands),
   ].join('\n');
+}
+
+function getQueuedUsageEvents(days) {
+  const since = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+
+  return usageEventQueue.filter((event) => {
+    const createdAt = new Date(event.createdAt).getTime();
+    return Number.isFinite(createdAt) && createdAt >= since;
+  });
 }
 
 function countTop(events, keyOrGetter, filter = () => true, limit = 5) {

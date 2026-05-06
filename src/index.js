@@ -287,11 +287,12 @@ async function handlePrivilegedStatsCommand(interaction) {
 
 async function handlePrivilegedFlushStatsCommand(interaction) {
   const before = getUsageFlushStatus();
-  await flushAllUsageEvents();
+  const flushedAll = await flushAllUsageEvents();
   const after = getUsageFlushStatus();
 
   await interaction.editReply(
-    `Flushed usage stats. Queued events: ${before.queuedEvents} -> ${after.queuedEvents}.`,
+    `${flushedAll ? 'Flushed usage stats.' : 'Tried to flush usage stats, but some events are still queued.'} ` +
+      `Queued events: ${before.queuedEvents} -> ${after.queuedEvents}.`,
   );
 }
 
